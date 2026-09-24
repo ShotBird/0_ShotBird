@@ -23,7 +23,8 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
   라운드 min = `.orchestra/orchestra.log`의 마지막 `autolaunch start min=` · 도는 스크립트 = `ps -ef | grep shotbird/scripts` ·
   진행 중 = 열림+assignee 있는 이슈 · verify 큐 = `gh issue list --state closed --label verify:browser` ·
   미취합 = 번호 ≥ min인 닫힌 이슈 중 `.orchestra/consolidated`에 없는 것. 스크립트·탭 세션은 clear와 무관하게 계속 돌고, wake 알림은 새 대화로 온다.
-- 이전 라운드 스크립트가 남아 있을 수 있다 — `bash <스킬>/scripts/stop.sh`.
+- **도는 스크립트를 먼저 확인한다** — `ps -ef | grep shotbird/scripts`. **돌고 있으면 끄지 않는다**(탭 세션을 받아 주는 중이다). `stop.sh`는 사용자가 오케스트라를 끝내라고 할 때나 스크립트를 고쳐 다시 띄울 때만.
+- **이어받기 + 새 할 일을 한 번에**: `/shotbird 이어서 — <새 목표>`. ① 위 이어받기로 상태를 읽고 미취합 티켓부터 취합 ② 새 목표를 차팅해 티켓을 만든다 — **스크립트는 다시 띄우지 않는다**: autolaunch의 범위(번호 ≥ min)에 새 티켓이 자동으로 들어간다 ③ wake가 끝나 있으면(백그라운드 작업 목록에 없으면) `wake.sh <min>`만 다시 띄운다. 스크립트가 하나도 없을 때만 셋 다 기동.
 
 `S`는 이 스킬의 scripts 폴더(이 SKILL.md 옆 `scripts/`)다.
 
