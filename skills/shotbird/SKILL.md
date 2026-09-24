@@ -19,6 +19,10 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
 - herdr 밖이면 멈추고 알린다. herdr 조작 문법이 필요하면 `herdr` 스킬을 먼저 로드한다.
 - 티켓은 현재 리포의 GitHub Issues. 지도 = `wayfinder:map` 라벨 이슈, 티켓 = 그 sub-issue, 종류 라벨 `wayfinder:{research,prototype,grilling,task}`, 소속 `effort:<slug>`(선택). 리포에 이슈 트래커 문서(예: `docs/agents/issue-tracker.md`)가 있으면 그 규약이 우선.
 - **리포의 오케스트라 운영 절을 먼저 읽는다**(wayfinder가 트래커 문서의 "Wayfinding operations"를 읽듯): 리포 이슈 트래커 문서(예: `docs/agents/issue-tracker.md`)의 **"Orchestra operations"** 절 — 그 리포에서만 다른 것(세션 규칙 파일·빌드 산출물 커밋 주체·브라우저·effort 배정). 절차는 이 스킬이 정본이고, 리포에는 스크립트 사본을 두지 않는다.
+- **이어받기**(clear·새 대화에서 `/shotbird 이어서`) — 메모 없이 상태를 직접 읽는다:
+  라운드 min = `.orchestra/orchestra.log`의 마지막 `autolaunch start min=` · 도는 스크립트 = `ps -ef | grep shotbird/scripts` ·
+  진행 중 = 열림+assignee 있는 이슈 · verify 큐 = `gh issue list --state closed --label verify:browser` ·
+  미취합 = 번호 ≥ min인 닫힌 이슈 중 `.orchestra/consolidated`에 없는 것. 스크립트·탭 세션은 clear와 무관하게 계속 돌고, wake 알림은 새 대화로 온다.
 - 이전 라운드 스크립트가 남아 있을 수 있다 — `bash <스킬>/scripts/stop.sh`.
 
 `S`는 이 스킬의 scripts 폴더(이 SKILL.md 옆 `scripts/`)다.
