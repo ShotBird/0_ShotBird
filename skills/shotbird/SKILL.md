@@ -19,7 +19,6 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
 - herdr 밖이면 멈추고 알린다. herdr 조작 문법이 필요하면 `herdr` 스킬을 먼저 로드한다.
 - 티켓은 현재 리포의 GitHub Issues. 지도 = `wayfinder:map` 라벨 이슈, 티켓 = 그 sub-issue, 종류 라벨 `wayfinder:{research,prototype,grilling,task}`, 소속 `effort:<slug>`(선택). 리포에 이슈 트래커 문서(예: `docs/agents/issue-tracker.md`)가 있으면 그 규약이 우선.
 - **리포의 오케스트라 운영 절을 먼저 읽는다**(wayfinder가 트래커 문서의 "Wayfinding operations"를 읽듯): 리포 이슈 트래커 문서(예: `docs/agents/issue-tracker.md`)의 **"Orchestra operations"** 절 — 그 리포에서만 다른 것(세션 규칙 파일·빌드 산출물 커밋 주체·브라우저·effort 배정). 절차는 이 스킬이 정본이고, 리포에는 스크립트 사본을 두지 않는다.
-- **`<리포>/.orchestra/handoff.md`가 있으면 가장 먼저 읽는다** — 메인 세션이 clear·교대 전에 남긴 인수인계(라운드 min·도는 스크립트·진행 중 티켓·verify 큐·사용자 답 대기). 이어받았으면 내용을 갱신하고, 라운드가 끝나면 지운다.
 - 이전 라운드 스크립트가 남아 있을 수 있다 — `bash <스킬>/scripts/stop.sh`.
 
 `S`는 이 스킬의 scripts 폴더(이 SKILL.md 옆 `scripts/`)다.
@@ -64,8 +63,7 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
    - **정체(`stalled`)**: 세션이 티켓을 연 채 idle로 멈춘 것 — 그 탭 화면(`herdr agent read t<번호> --source recent-unwrapped`)과 코멘트를 읽고, 남은 것이 사용자 결정이면 사용자에게 묻고 답을 그 세션에 전하거나(질문창이 아닐 때만) 메인이 코멘트로 정리해 닫는다. 브라우저 확인만 남았으면 `verify:browser` 라벨을 붙여 닫는다.
    - **verify 큐**: `verify:browser` 라벨이 붙은 닫힌 티켓 = 브라우저 확인만 남은 것. 메인이 **한 번에 하나씩**(브라우저 프로필 공유) 코멘트의 "남은 브라우저 확인" 절차대로 확인 → 결과 코멘트 → 라벨 제거. 육안 판정은 스크린샷으로 사용자에게 묻는다. 문제가 나오면 새 구현 티켓.
    - 처리한 번호를 `.orchestra/consolidated`에 적고 `wake.sh <min>`을 다시 띄운다.
-5. **교대** — 메인 세션을 clear하거나 넘길 때는 `.orchestra/handoff.md`에 라운드 min·진행 중 티켓·verify 큐·사용자 답 대기를 적는다. 스크립트·탭 세션은 clear와 무관하게 계속 돌고, wake 알림은 새 대화로 온다.
-6. **종료** — 범위 안 열린 티켓이 skip 말고 0이면 autolaunch가, 남은 탭이 없으면 autoclose가 끝난다. `stop.sh`로 마무리하고 사용자에게 산출물(결정·커밋·문서·파생 티켓)을 표로 종합 보고.
+5. **종료** — 범위 안 열린 티켓이 skip 말고 0이면 autolaunch가, 남은 탭이 없으면 autoclose가 끝난다. `stop.sh`로 마무리하고 사용자에게 산출물(결정·커밋·문서·파생 티켓)을 표로 종합 보고.
 
 ## 안전 규칙
 
