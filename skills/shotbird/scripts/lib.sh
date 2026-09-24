@@ -87,6 +87,7 @@ frontier() {
   for n in $(gh issue list --repo "$GH_REPO" --state open --limit 300 --json number,assignees,labels \
       --jq ".[] | select(.number>=$min and (.assignees|length)==0 and ([.labels[].name]|index(\"wayfinder:map\")|not)) | .number"); do
     grep -qx "$n" "$STATE/skip" && continue
+    grep -qx "$n" "$STATE/launched" && continue   # 이미 띄웠는데 claim 안 한 세션(로그 반복 방지)
     [ "$(blockers_of "$n")" = 0 ] && echo "$n"
   done
 }
