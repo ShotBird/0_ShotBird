@@ -71,6 +71,7 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
 - 지도 본문은 메인만 고친다(동시 편집은 덮어쓰기).
 - autoclose는 이름 `t<키>` + 탭 이름이 `#<키>`로 끝나는 것만 닫는다. blocked(질문창)는 닫지 않는다.
 - 도는 세션(working/blocked)에 입력을 보내지 않는다 — 질문창에 보낸 키는 답이 된다.
+- **세션 화면의 입력창 회색 문구는 사용자 입력이 아니다** — Claude Code의 추천 답변(prompt suggestion)이 `agent read` 텍스트에는 실제 입력과 똑같이 찍힌다(2026-09-24 오판). "미전송 입력이 있다"고 보고하지 말 것.
 - **스크립트는 `stop.sh`로만 끈다** — Windows에서는 백그라운드 작업을 멈춰도 bash 자식이 살아남아 탭을 계속 띄운다. 스크립트를 고쳐 다시 띄울 때도 `stop.sh` 먼저.
 - Windows 파이썬 출력의 `\r`은 `tr -d '\r'`로 벗긴다(스크립트에 반영됨).
 
