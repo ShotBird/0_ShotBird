@@ -50,7 +50,7 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
    ```bash
    bash $S/autolaunch.sh <min>   # 2분마다 frontier → 탭 (task=구현, 그 밖=wayfinder 결정)
    bash $S/autoclose.sh          # 티켓 CLOSED + idle 2회 연속 → 탭 닫기
-   bash $S/wake.sh <min>         # 미취합 종결 티켓이 생기면 끝나며 메인을 깨움
+   bash $S/wake.sh <min>         # 미취합 종결 티켓 또는 정체 세션이 생기면 끝나며 메인을 깨움
    ```
 
    탭 = `<effort> #<번호>`, 에이전트 = `t<번호>`, 첫 입력 `/advisor fable`(`ORCH_FIRST_INPUT`로 변경) → 작업 프롬프트.
@@ -59,11 +59,14 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
    - resolution comment의 `Decisions 요지`를 지도 Decisions에 한 줄(링크는 이름으로), 승격된 fog는 Not yet specified에서 지운다. 지도 본문은 **고치기 직전에 새로 받아** 고친다.
    - `메인 세션:` 줄·문서 반영 요청 처리 → 커밋·푸시.
    - 새로 생긴 티켓을 다시 병렬 판정(2) — 충돌이면 blocking. 풀린 것은 autolaunch가 띄운다.
+   - **정체(`stalled`)**: 세션이 티켓을 연 채 idle로 멈춘 것 — 그 탭 화면(`herdr agent read t<번호> --source recent-unwrapped`)과 코멘트를 읽고, 남은 것이 사용자 결정이면 사용자에게 묻고 답을 그 세션에 전하거나(질문창이 아닐 때만) 메인이 코멘트로 정리해 닫는다. 브라우저 확인만 남았으면 `verify:browser` 라벨을 붙여 닫는다.
+   - **verify 큐**: `verify:browser` 라벨이 붙은 닫힌 티켓 = 브라우저 확인만 남은 것. 메인이 **한 번에 하나씩**(브라우저 프로필 공유) 코멘트의 "남은 브라우저 확인" 절차대로 확인 → 결과 코멘트 → 라벨 제거. 육안 판정은 스크린샷으로 사용자에게 묻는다. 문제가 나오면 새 구현 티켓.
    - 처리한 번호를 `.orchestra/consolidated`에 적고 `wake.sh <min>`을 다시 띄운다.
 5. **종료** — 범위 안 열린 티켓이 skip 말고 0이면 autolaunch가, 남은 탭이 없으면 autoclose가 끝난다. `stop.sh`로 마무리하고 사용자에게 산출물(결정·커밋·문서·파생 티켓)을 표로 종합 보고.
 
 ## 안전 규칙
 
+- **세션은 idle로 끝내지 않는다**(2026-09-24 사건 — 구현 3건이 "브라우저 확인 남음"으로 티켓을 연 채 멈춰, 사용자는 끝난 줄 알았고 autoclose·wake는 종결을 못 봤다). 브라우저 확인만 남으면 `verify:browser`로 닫고, 사용자 결정이 남으면 닫기 전에 AskUserQuestion. 그래도 멈추면 wake가 '정체'로 메인을 깨운다.
 - 여러 세션이 **같은 작업 트리**를 쓴다 — `git add`는 자기 파일만, `add -A`·`stash`·`checkout --`·`pull --rebase` 금지, fetch 후 push(거절되면 멈춤).
 - 지도 본문은 메인만 고친다(동시 편집은 덮어쓰기).
 - autoclose는 이름 `t<키>` + 탭 이름이 `#<키>`로 끝나는 것만 닫는다. blocked(질문창)는 닫지 않는다.
@@ -73,4 +76,4 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
 
 ## 상태 파일 (`<리포>/.orchestra/`, gitignore 권장)
 
-`launched`(띄운 키 — 다시 안 띄움) · `skip`(자동 기동 제외) · `consolidated`(취합 끝난 번호) · `extra/<번호>`(티켓별 추가 지시) · `orchestra.log`.
+`launched`(띄운 키 — 다시 안 띄움) · `skip`(자동 기동 제외) · `consolidated`(취합 끝난 번호) · `stalled_reported`(정체 보고한 번호) · `extra/<번호>`(티켓별 추가 지시) · `orchestra.log`.
