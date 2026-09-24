@@ -60,6 +60,7 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
    ```
 
    탭 = `<effort> #<번호>`, 에이전트 = `t<번호>`, 첫 입력 `/advisor fable`(`ORCH_FIRST_INPUT`로 변경) → 작업 프롬프트.
+   **Fable을 못 쓰면 Opus**(`ORCH_ADVISOR_FALLBACK`, 기본 `/advisor opus`): 기동 때 응답이 `Advisor set to`가 아니면 곧바로 바꾸고, 도는 중 Fable advisor 호출이 한도·사용 불가로 실패한 세션은 autoclose가 idle/done일 때 1회 바꾼다(`.orchestra/advisor_fallback`). 메인 세션 자신의 advisor가 Fable로 안 되면 사용자에게 `/advisor opus`를 쳐 달라고 알린다.
    티켓 밖 작업: `bash $S/spawn.sh --raw <번호>r "<effort> #<번호>r" "<프롬프트>"` — 완료 판정은 `#<번호>`를 언급한 커밋.
 4. **취합(깨어날 때마다)** — `wake.sh` 출력의 티켓마다:
    - resolution comment의 `Decisions 요지`를 지도 Decisions에 한 줄(링크는 이름으로), 승격된 fog는 Not yet specified에서 지운다. 지도 본문은 **고치기 직전에 새로 받아** 고친다.
@@ -80,7 +81,8 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
 - **세션 화면의 입력창 회색 문구는 사용자 입력이 아니다** — Claude Code의 추천 답변(prompt suggestion)이 `agent read` 텍스트에는 실제 입력과 똑같이 찍힌다(2026-09-24 오판). "미전송 입력이 있다"고 보고하지 말 것.
 - **스크립트는 `stop.sh`로만 끈다** — Windows에서는 백그라운드 작업을 멈춰도 bash 자식이 살아남아 탭을 계속 띄운다. 스크립트를 고쳐 다시 띄울 때도 `stop.sh` 먼저.
 - Windows 파이썬 출력의 `\r`은 `tr -d '\r'`로 벗긴다(스크립트에 반영됨).
+- Git Bash는 `/`로 시작하는 인자를 Windows 경로로 바꾼다 — `/advisor fable`이 `C:/Program Files/Git/advisor fable`로 들어가 일반 프롬프트가 됐다(2026-09-24 발견). `lib.sh`가 `MSYS_NO_PATHCONV=1`을 켠다 — herdr로 슬래시 명령을 보내는 코드는 lib.sh를 거칠 것.
 
 ## 상태 파일 (`<리포>/.orchestra/`, gitignore 권장)
 
-`launched`(띄운 키 — 다시 안 띄움) · `skip`(자동 기동 제외) · `consolidated`(취합 끝난 번호) · `stalled_reported`(정체 보고한 번호) · `extra/<번호>`(티켓별 추가 지시) · `orchestra.log`.
+`launched`(띄운 키 — 다시 안 띄움) · `advisor_fallback`(Opus로 바꾼 세션) · `skip`(자동 기동 제외) · `consolidated`(취합 끝난 번호) · `stalled_reported`(정체 보고한 번호) · `extra/<번호>`(티켓별 추가 지시) · `orchestra.log`.
