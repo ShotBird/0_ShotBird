@@ -18,6 +18,7 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
 
 - herdr 밖이면 멈추고 알린다. herdr 조작 문법이 필요하면 `herdr` 스킬을 먼저 로드한다.
 - 티켓은 현재 리포의 GitHub Issues. 지도 = `wayfinder:map` 라벨 이슈, 티켓 = 그 sub-issue, 종류 라벨 `wayfinder:{research,prototype,grilling,task}`, 소속 `effort:<slug>`(선택). 리포에 이슈 트래커 문서(예: `docs/agents/issue-tracker.md`)가 있으면 그 규약이 우선.
+- **리포의 오케스트라 운영 절을 먼저 읽는다**(wayfinder가 트래커 문서의 "Wayfinding operations"를 읽듯): 리포 이슈 트래커 문서(예: `docs/agents/issue-tracker.md`)의 **"Orchestra operations"** 절 — 그 리포에서만 다른 것(세션 규칙 파일·빌드 산출물 커밋 주체·브라우저·effort 배정). 절차는 이 스킬이 정본이고, 리포에는 스크립트 사본을 두지 않는다.
 - 이전 라운드 스크립트가 남아 있을 수 있다 — `bash <스킬>/scripts/stop.sh`.
 
 `S`는 이 스킬의 scripts 폴더(이 SKILL.md 옆 `scripts/`)다.
@@ -67,7 +68,7 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
 ## 안전 규칙
 
 - **세션은 idle로 끝내지 않는다**(2026-09-24 사건 — 구현 3건이 "브라우저 확인 남음"으로 티켓을 연 채 멈춰, 사용자는 끝난 줄 알았고 autoclose·wake는 종결을 못 봤다). 브라우저 확인만 남으면 `verify:browser`로 닫고, 사용자 결정이 남으면 닫기 전에 AskUserQuestion. 그래도 멈추면 wake가 '정체'로 메인을 깨운다.
-- 여러 세션이 **같은 작업 트리**를 쓴다 — `git add`는 자기 파일만, `add -A`·`stash`·`checkout --`·`pull --rebase` 금지, fetch 후 push(거절되면 멈춤).
+- 여러 세션이 **같은 작업 트리**를 쓴다 — 커밋은 `git commit -- <자기 경로>`(남이 스테이징한 변경이 섞이지 않게, 메인 포함), `git add`는 자기 파일만, `add -A`·`stash`·`checkout --`·`pull --rebase` 금지, fetch 후 push(거절되면 멈춤).
 - 지도 본문은 메인만 고친다(동시 편집은 덮어쓰기).
 - autoclose는 이름 `t<키>` + 탭 이름이 `#<키>`로 끝나는 것만 닫는다. blocked(질문창)는 닫지 않는다.
 - 도는 세션(working/blocked)에 입력을 보내지 않는다 — 질문창에 보낸 키는 답이 된다.
