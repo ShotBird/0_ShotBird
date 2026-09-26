@@ -36,5 +36,30 @@ for a in json.load(sys.stdin)['result']['agents']:
       else seen[$name]=1; fi
     else unset "seen[$name]"; fi
   done <<< "$rows"
+  # 에이전트가 먼저 끝나 버린 탭(셸만 남음) — t<키> 목록에 안 잡혀 계속 남던 결함(2026-09-26). 이 워크스페이스에서
+  # 탭 이름이 "<effort> #<키>"이고 그 키를 오케스트라가 띄웠고(.orchestra/launched) 탭에 에이전트가 없으면, 완료 판정 후 2회 연속이면 닫는다.
+  orphans=$(python -c "
+import sys,json,re,subprocess
+def j(*a): return json.loads(subprocess.run(['herdr',*a],capture_output=True,text=True,encoding='utf-8').stdout)
+live={a.get('tab_id') for a in j('agent','list')['result']['agents']}
+launched=set(open(sys.argv[1],encoding='utf-8').read().split())
+for t in j('tab','list')['result'].get('tabs',[]):
+    if t.get('workspace_id')!=sys.argv[2] or t.get('tab_id') in live: continue
+    m=re.fullmatch(r'\S+ #(\d+r?)',t.get('label') or '')
+    if m and m.group(1) in launched: print(m.group(1),t['tab_id'])" "$STATE/launched" "$HERDR_WORKSPACE_ID" | tr -d '\r')
+  while read -r key tab; do
+    [ -z "$key" ] && continue
+    num=${key%r}
+    if [ "$key" != "$num" ]; then
+      [ -n "$(git -C "$REPO" log --oneline -E --grep="#$num([^0-9]|$)" -1)" ] && fin=y || fin=
+    else
+      [ "$(state_of "$num")" = CLOSED ] && fin=y || fin=
+    fi
+    [ "$fin" = y ] || { unset "seen[o$key]"; continue; }
+    if [ -n "${seen[o$key]}" ]; then
+      herdr tab close "$tab" > /dev/null && log "closed orphan tab #$key (에이전트 없음)"
+      worktree_drop "$key"; unset "seen[o$key]"
+    else seen[o$key]=1; fi
+  done <<< "$orphans"
   sleep 60
 done
