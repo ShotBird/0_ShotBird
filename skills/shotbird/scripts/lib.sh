@@ -117,7 +117,14 @@ worktree_drop() {
   for d in $WORKTREE_LINKS; do   # 링크를 먼저 끊는다 — 링크 대상(본 폴더)을 지우지 않게
     [ -e "$wt/$d" ] && cmd /c rmdir "$(winpath "$wt/$d")" > /dev/null 2>&1
   done
-  git -C "$REPO" worktree remove --force "$wt" 2>>"$LOG" && log "t$key worktree removed"
+  # Windows: 방금 닫은 탭의 셸·에디터가 폴더 핸들을 잠깐 쥐고 있어 remove가 Permission denied로 빈 껍데기를 남긴다(2026-09-26 2/5).
+  # 핸들 해제를 기다려 1회 재시도하고, git 등록은 풀렸는데 폴더만 남으면 지운다.
+  if ! git -C "$REPO" worktree remove --force "$wt" 2>>"$LOG"; then
+    sleep 10; git -C "$REPO" worktree remove --force "$wt" 2>>"$LOG"
+  fi
+  git -C "$REPO" worktree prune
+  [ -d "$wt" ] && ! git -C "$REPO" worktree list --porcelain | grep -qF "worktree $wt" && rm -rf "$wt" 2>>"$LOG"
+  if [ -d "$wt" ]; then log "t$key worktree 폴더 삭제 실패 — $wt 남음(수동 정리)"; else log "t$key worktree removed"; fi
   git -C "$REPO" fetch -q origin
   if git -C "$REPO" merge-base --is-ancestor "$br" origin/main 2>/dev/null; then
     git -C "$REPO" branch -D "$br" > /dev/null 2>&1
