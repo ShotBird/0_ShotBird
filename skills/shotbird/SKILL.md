@@ -59,7 +59,7 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
    bash $S/wake.sh <min>         # 미취합 종결 티켓 또는 정체 세션이 생기면 끝나며 메인을 깨움
    ```
 
-   탭 = `<effort> #<번호>`, 에이전트 = `t<번호>`, 첫 입력 `/advisor fable`(`ORCH_FIRST_INPUT`로 변경) → 작업 프롬프트.
+   탭 = `<effort> #<번호>`, 에이전트 = `t<번호>`, 구현(task) 세션의 작업 폴더 = `<리포>-t<번호>` worktree, 첫 입력 `/advisor fable`(`ORCH_FIRST_INPUT`로 변경) → 작업 프롬프트.
    **Fable을 못 쓰면 Opus**(`ORCH_ADVISOR_FALLBACK`, 기본 `/advisor opus`): 기동 때 응답이 `Advisor set to`가 아니면 곧바로 바꾸고, 도는 중 Fable advisor 호출이 한도·사용 불가로 실패한 세션은 autoclose가 idle/done일 때 1회 바꾼다(`.orchestra/advisor_fallback`). 메인 세션 자신의 advisor가 Fable로 안 되면 사용자에게 `/advisor opus`를 쳐 달라고 알린다.
    티켓 밖 작업: `bash $S/spawn.sh --raw <번호>r "<effort> #<번호>r" "<프롬프트>"` — 완료 판정은 `#<번호>`를 언급한 커밋.
 4. **취합(깨어날 때마다)** — `wake.sh` 출력의 티켓마다:
@@ -74,7 +74,9 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
 ## 안전 규칙
 
 - **세션은 idle로 끝내지 않는다**(2026-09-24 사건 — 구현 3건이 "브라우저 확인 남음"으로 티켓을 연 채 멈춰, 사용자는 끝난 줄 알았고 autoclose·wake는 종결을 못 봤다). 브라우저 확인만 남으면 `verify:browser`로 닫고, 사용자 결정이 남으면 닫기 전에 AskUserQuestion. 그래도 멈추면 wake가 '정체'로 메인을 깨운다.
-- 여러 세션이 **같은 작업 트리**를 쓴다 — 커밋은 `git commit -- <자기 경로>`(남이 스테이징한 변경이 섞이지 않게, 메인 포함), `git add`는 자기 파일만, `add -A`·`stash`·`checkout --`·`pull --rebase` 금지, fetch 후 push(거절되면 멈춤).
+- **구현 세션 = 자기 git worktree**(`ORCH_WORKTREE=1` 기본): `spawn_ticket`이 `<리포>-t<번호>` 폴더에 브랜치 `orch/t<번호>`를 origin/main에서 만들고 그 폴더에서 탭을 띄운다. 본 폴더의 gitignore 폴더(`ORCH_WORKTREE_LINKS`, 기본 `node_modules` — 있을 때만)는 junction으로 공유. 세션은 자기 폴더에서 자유롭게 커밋하고 끝에 `fetch → rebase origin/main → 테스트 → push origin HEAD:main`(non-ff면 반복, force 금지, 배포 산출물은 커밋하지 않음). autoclose가 탭을 닫으면 그 worktree를 지우고, 브랜치는 main에 합쳐졌을 때만 지운다(아니면 남기고 로그). 오케스트라가 만든 worktree만 `.orchestra/worktrees`에 적고 지운다(사람이 만든 worktree 보호).
+- 결정·조사 세션은 본 폴더에서 돈다(리포 파일 수정 금지). worktree를 못 만들면 구현 세션도 본 폴더로 떨어지고, 그때는 옛 규칙(커밋은 `git commit -- <자기 경로>`, add는 자기 파일만, `stash`·`checkout --` 금지)이 프롬프트에 붙는다.
+- **본 폴더는 세션이 합친 뒤에도 옛 코드다** — 메인이 취합할 때 `git pull`(본 폴더에 남의 WIP가 없으면 `--ff-only`)부터 한 뒤 빌드·서버 확인을 한다. 메인 자신의 커밋도 `git commit -- <경로>`로 한정.
 - 지도 본문은 메인만 고친다(동시 편집은 덮어쓰기).
 - autoclose는 이름 `t<키>` + 탭 이름이 `#<키>`로 끝나는 것만 닫는다. blocked(질문창)는 닫지 않는다.
 - 도는 세션(working/blocked)에 입력을 보내지 않는다 — 질문창에 보낸 키는 답이 된다.
@@ -85,4 +87,4 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
 
 ## 상태 파일 (`<리포>/.orchestra/`, gitignore 권장)
 
-`launched`(띄운 키 — 다시 안 띄움) · `advisor_fallback`(Opus로 바꾼 세션) · `skip`(자동 기동 제외) · `consolidated`(취합 끝난 번호) · `stalled_reported`(정체 보고한 번호) · `extra/<번호>`(티켓별 추가 지시) · `orchestra.log`.
+`launched`(띄운 키 — 다시 안 띄움) · `worktrees`(오케스트라가 만든 worktree 키 — autoclose가 지울 대상) · `advisor_fallback`(Opus로 바꾼 세션) · `skip`(자동 기동 제외) · `consolidated`(취합 끝난 번호) · `stalled_reported`(정체 보고한 번호) · `extra/<번호>`(티켓별 추가 지시) · `orchestra.log`.

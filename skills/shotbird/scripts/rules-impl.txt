@@ -1,7 +1,7 @@
-[병렬 구현 규칙 — 같은 작업 트리에서 다른 세션 여러 개가 동시에 구현 중이다 (orchestra)]
+[병렬 구현 규칙 — 다른 세션 여러 개가 동시에 구현 중이다. 이 세션은 자기 git worktree에서 일한다 (orchestra)]
 1) 먼저 이슈를 claim(gh issue edit N --add-assignee @me). 이슈 본문과 결정(resolution comment)이 정본 — 결정 밖 변경 금지, 결정 밖·미정의 항목이 나오면 멈추고 사용자에게 묻는다.
 2) 리포 CLAUDE.md의 테스트·빌드·수칙을 완료 조건으로 따른다. 다른 세션의 미완성 변경 때문에 테스트가 깨지면 원인 파일이 자기 것인지 먼저 확인하고, 남의 것이면 그 사실을 보고한다(남의 파일 수정 금지).
-3) git: git add는 자기가 바꾼 파일만(git add -A·git stash·git checkout -- 금지 — 다른 세션 작업을 망가뜨린다). **커밋은 `git commit -- <자기 경로들>`** — 다른 세션이 스테이징해 둔 변경이 인덱스에 있을 수 있어 경로 없는 commit은 그것까지 싣는다. 커밋 메시지에 이슈 번호. pull --rebase 대신 git fetch 후 push, 거절되면 멈추고 보고.
+3) git(자기 worktree): 이 폴더는 이 세션 전용이라 add·stash·checkout --는 자유다. 커밋 메시지에 이슈 번호. **합치기**: 빌드가 다시 만든 배포 산출물(리포 CLAUDE.md의 빌드 결과물, 예: release HTML)은 커밋하지 않고 되돌린 뒤 `git fetch origin && git rebase origin/main` → 테스트 다시 → `git push origin HEAD:main`. push가 non-fast-forward로 거절되면 fetch·rebase·테스트·push를 반복한다(force push 금지). rebase 충돌이 자기가 고치지 않은 파일에서 나면 멈추고 보고한다. 합친 뒤에도 본 폴더(<리포>)는 오케스트라가 pull하기 전까지 옛 코드다 — 본 폴더 서버로 화면 확인이 필요하면 "메인 세션:" 줄로 넘긴다.
 4) 끝나면 커밋 해시와 검증 수치를 resolution comment로 남기고 close. 후속 이슈를 만들면 **만든 직후 번호를 <리포>/.orchestra/skip에 한 줄 추가**한다(오케스트라가 병렬 판정 뒤 해제). 지도 이슈 본문 편집 금지 — comment 끝에 "Decisions 요지: <한 줄>". 메인 세션에 넘길 일은 "메인 세션:"으로 시작하는 줄로.
 5) 브라우저 사용 금지 — 아래 추가 지시에 허용이 적힌 경우만 예외. 브라우저 확인이 필요한 항목은 resolution comment에 "남은 브라우저 확인: <절차·기대값>"으로 적고 라벨 verify:browser를 붙인 뒤 **close한다**(열어 두지 않는다 — 메인이 verify 큐로 모아 한 번에 하나씩 확인).
 6) **idle로 끝내지 않는다**: 사용자 결정이 남으면(기본값 확인·범위 밖 요청 등) close 전에 AskUserQuestion으로 묻고 답을 반영한 뒤 close. 스스로 판단할 수 없고 사용자도 지금 답할 수 없으면 "메인 세션:" 줄로 넘기고 close. 티켓을 열어 둔 채 멈추면 오케스트라는 그 세션을 '정체'로 보고 메인을 깨운다.

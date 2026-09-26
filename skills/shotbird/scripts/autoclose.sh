@@ -2,7 +2,7 @@
 # 사용: autoclose.sh   (메인 세션이 백그라운드로 띄운다)
 # 오케스트라가 띄운 세션(t<키>)만 대상. 완료 = 이슈 CLOSED(키 "<번호>r"은 "#<번호>" 언급 커밋 존재)
 # + 에이전트 idle/done이 1분 간격 연속 2회 → 그 탭을 닫는다. blocked(질문창)·working은 닫지 않는다.
-# 도는 김에 advisor_sweep — Fable advisor가 실패한 idle 세션을 /advisor opus로(lib.sh).
+# 탭을 닫은 뒤 그 세션의 worktree를 지운다(worktree_drop). 도는 김에 advisor_sweep — Fable advisor가 실패한 idle 세션을 /advisor opus로(lib.sh).
 # 남은 t<키> 세션이 없고 autolaunch가 끝났으면 종료.
 . "$(dirname "$0")/lib.sh"
 require_herdr
@@ -31,6 +31,7 @@ for a in json.load(sys.stdin)['result']['agents']:
       case "$label" in *"#$key") ;; *) continue ;; esac   # 오케스트라가 만든 탭만
       if [ -n "${seen[$name]}" ]; then
         herdr tab close "$tab" > /dev/null && log "closed $name ($label)"
+        worktree_drop "$key"   # 오케스트라가 만든 worktree만(lib.sh) — 합쳐지지 않은 브랜치는 남긴다
         unset "seen[$name]"
       else seen[$name]=1; fi
     else unset "seen[$name]"; fi
