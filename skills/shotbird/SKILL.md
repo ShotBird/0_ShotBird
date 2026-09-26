@@ -68,6 +68,10 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
    - 새로 생긴 티켓을 다시 병렬 판정(2) — 충돌이면 blocking. 풀린 것은 autolaunch가 띄운다.
    - **정체(`stalled`)**: 세션이 티켓을 연 채 idle로 멈춘 것 — 그 탭 화면(`herdr agent read t<번호> --source recent-unwrapped`)과 코멘트를 읽고, 남은 것이 사용자 결정이면 사용자에게 묻고 답을 그 세션에 전하거나(질문창이 아닐 때만) 메인이 코멘트로 정리해 닫는다. 브라우저 확인만 남았으면 `verify:browser` 라벨을 붙여 닫는다.
    - **verify 큐**: `verify:browser` 라벨이 붙은 닫힌 티켓 = 브라우저 확인만 남은 것. 메인이 **한 번에 하나씩**(브라우저 프로필 공유) 코멘트의 "남은 브라우저 확인" 절차대로 확인 → 결과 코멘트 → 라벨 제거. 육안 판정은 스크린샷으로 사용자에게 묻는다. 문제가 나오면 새 구현 티켓.
+   - **취합 보류**: resolution에 `결정 밖 항목:` 줄이 없으면 취합하지 않고 그 티켓에 보충을 요청한다. 있으면 후속 번호를 병렬 판정(2)으로.
+   - **verify 기록**: `verify:browser` 확인 코멘트는 커밋 해시·서버 포트·데이터 폴더·확인 항목 n/m 4칸, 부분 PASS는 라벨 유지(닫힘 ≠ 검증됨). 도메인·모델 결정은 `verify:domain` + "실측 검증 상태" 줄 — 실측으로 확인되기 전까지 지도 Decisions 줄 끝에 `(미검증)`.
+   - **`human queue digest`**(하루 1회): 기한 지난 사람 대기 항목을 사용자에게 알린다. 사람이 해야 시작되는 티켓은 skip이 아니라 `.orchestra/human-queue.tsv`(번호·누가·무엇·기한·마지막 확인)에 둔다 — skip은 오케스트라 판정 대기용.
+   - **`cross-review due`**: 표식 이후 main 커밋이 `ORCH_REVIEW_EVERY`(기본 60)를 넘은 것. 그 범위(`git diff <표식>..origin/main`)의 **교차 리뷰** research 티켓을 만든다(렌즈 = 같은 규칙 여러 벌·결정 간 모순·문서≠코드·이웃 경로에 같은 수정 미적용). 만든 뒤 `.orchestra/review_mark`를 origin/main으로 옮긴다.
    - 처리한 번호를 `.orchestra/consolidated`에 적고 `wake.sh <min>`을 다시 띄운다.
 5. **종료** — 범위 안 열린 티켓이 skip 말고 0이면 autolaunch가, 남은 탭이 없으면 autoclose가 끝난다. `stop.sh`로 마무리하고 사용자에게 산출물(결정·커밋·문서·파생 티켓)을 표로 종합 보고.
 
@@ -87,4 +91,4 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
 
 ## 상태 파일 (`<리포>/.orchestra/`, gitignore 권장)
 
-`launched`(띄운 키 — 다시 안 띄움) · `worktrees`(오케스트라가 만든 worktree 키 — autoclose가 지울 대상) · `advisor_fallback`(Opus로 바꾼 세션) · `skip`(자동 기동 제외) · `consolidated`(취합 끝난 번호) · `stalled_reported`(정체 보고한 번호) · `extra/<번호>`(티켓별 추가 지시) · `orchestra.log`.
+`launched`(띄운 키 — 다시 안 띄움) · `worktrees`(오케스트라가 만든 worktree 키 — autoclose가 지울 대상) · `advisor_fallback`(Opus로 바꾼 세션) · `skip`(자동 기동 제외 — 오케스트라 판정 대기) · `human-queue.tsv`(사람 대기열 — 번호·누가·무엇·기한·마지막 확인, 자동 기동 제외) · `human_digest_date` · `review_mark`(마지막 교차 리뷰 커밋) · `consolidated`(취합 끝난 번호) · `stalled_reported`(정체 보고한 번호) · `extra/<번호>`(티켓별 추가 지시) · `orchestra.log`.

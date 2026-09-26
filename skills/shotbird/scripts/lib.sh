@@ -20,7 +20,7 @@ REPO="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "git 리포 안에
 GH_REPO="$(cd "$REPO" && gh repo view --json nameWithOwner --jq .nameWithOwner)" || { echo "gh repo view 실패"; exit 1; }
 STATE="$REPO/.orchestra"
 mkdir -p "$STATE/extra"
-touch "$STATE/launched" "$STATE/skip" "$STATE/consolidated"
+touch "$STATE/launched" "$STATE/skip" "$STATE/consolidated" "$STATE/human-queue.tsv"
 LOG="$STATE/orchestra.log"
 AGENT_KIND="${ORCH_AGENT_KIND:-claude}"
 FIRST_INPUT="${ORCH_FIRST_INPUT-/advisor fable}"
@@ -198,12 +198,30 @@ in_scope() { # <state> <min>
     --jq ".[] | select(.number>=$2 and ([.labels[].name]|index(\"wayfinder:map\")|not)) | .number"
 }
 
-# frontier <min> — 열림·미할당·blocker 0·skip 아님
+# held_ids — 자동 기동에서 뺄 번호 = skip(번호 한 줄, 판정 대기) ∪ human-queue.tsv 첫 열(사람 대기열)
+#   human-queue.tsv 한 줄 = 번호<TAB>누가<TAB>무엇<TAB>기한(YYYY-MM-DD 또는 -)<TAB>마지막 확인(YYYY-MM-DD)
+held_ids() { { cat "$STATE/skip"; cut -f1 "$STATE/human-queue.tsv"; } 2>/dev/null | tr -d '\r' | grep -E '^[0-9]+r?$'; }
+
+# human_digest — 사람 대기열 요약(기한 지남·기한 없음·전체). wake가 하루 1회 출력한다.
+human_digest() {
+  local today; today=$(date +%F)
+  awk -F'\t' -v t="$today" '
+    NF>=3 && $1 ~ /^[0-9]/ {
+      n++
+      if ($4!="" && $4!="-" && $4<t) { o++; print "  기한 지남 #" $1 " [" $2 "] " $3 " (기한 " $4 ", 마지막 확인 " $5 ")" }
+      else if ($4=="" || $4=="-") nd++
+    }
+    END { printf "사람 대기열 %d건 — 기한 지남 %d · 기한 없음 %d\n", n, o, nd }' "$STATE/human-queue.tsv"
+}
+
+# frontier <min> — 열림·미할당·blocker 0·skip·사람 대기열 아님
 frontier() {
-  local min="$1" n
+  local min="$1" n held
+  held=$(held_ids)
   for n in $(gh issue list --repo "$GH_REPO" --state open --limit 300 --json number,assignees,labels \
       --jq ".[] | select(.number>=$min and (.assignees|length)==0 and ([.labels[].name]|index(\"wayfinder:map\")|not)) | .number"); do
-    grep -qx "$n" "$STATE/skip" && continue
+    printf '%s
+' "$held" | grep -qx "$n" && continue
     grep -qx "$n" "$STATE/launched" && continue   # 이미 띄웠는데 claim 안 한 세션(로그 반복 방지)
     [ "$(blockers_of "$n")" = 0 ] && echo "$n"
   done
