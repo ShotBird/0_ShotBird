@@ -16,6 +16,14 @@ while :; do
   if [ -s "$STATE/human-queue.tsv" ] && [ "$(cat "$STATE/human_digest_date" 2>/dev/null)" != "$(date +%F)" ]; then
     date +%F > "$STATE/human_digest_date"; echo "human queue digest:"; human_digest; exit 0
   fi
+  # 합쳐지지 않은 채 닫힌 세션 — autoclose가 "브랜치 … main에 없음"을 남긴 키(세션이 push를 빠뜨림, 2026-09-27 #577).
+  #   메인은 그 브랜치의 커밋을 main에 다시 합치는 후속 작업(<번호>r)을 띄운다. 같은 키는 한 번만(.orchestra/unmerged_reported).
+  touch "$STATE/unmerged_reported"
+  um=$(grep -o 't[0-9]*r\? 브랜치 orch/t[0-9]*r\? 는 main에 없음' "$LOG" 2>/dev/null | awk '{print $1}' | sort -u | grep -vxF -f "$STATE/unmerged_reported")
+  if [ -n "$um" ]; then
+    printf '%s\n' $um >> "$STATE/unmerged_reported"
+    echo "closed but not merged (branch kept):"; printf '%s\n' $um; exit 0
+  fi
   # 교차 리뷰 — 마지막 리뷰 표식(.orchestra/review_mark = 커밋) 이후 main 커밋이 ORCH_REVIEW_EVERY(기본 60)개를 넘으면 알린다.
   #   메인은 그 범위(git diff <표식>..origin/main)의 교차 리뷰 research 티켓을 만들고 표식을 origin/main으로 옮긴다.
   git -C "$REPO" fetch -q origin 2>/dev/null
