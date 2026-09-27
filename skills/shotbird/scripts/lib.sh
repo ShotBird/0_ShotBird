@@ -5,6 +5,7 @@
 # 설정(환경변수, 모두 선택):
 #   ORCH_AGENT_KIND   병렬 세션 에이전트 종류 (기본 claude)
 #   ORCH_FIRST_INPUT  에이전트 기동 직후 첫 입력 (기본 "/advisor fable", 빈 문자열이면 생략)
+#   ORCH_AGENT_ARGS   에이전트 실행 인자(공백 구분, 기본 없음) — 예: "--effort high". 메인 세션이 /effort로 저장한 기본값과 무관하게 병렬 세션을 고정한다
 #   ORCH_ADVISOR_FALLBACK  Fable advisor를 못 쓸 때 보낼 입력 (기본 "/advisor opus", 빈 문자열이면 폴백 안 함)
 #   ORCH_WAYFINDER    결정 티켓에 쓰는 wayfinder 호출 (기본 "/mattpocock-skills:wayfinder")
 #   ORCH_MAX_SESSIONS 동시에 떠 있는 병렬 세션(t<키>) 상한 (기본 6 — autolaunch가 넘으면 다음 주기로 미룬다)
@@ -29,6 +30,7 @@ AGENT_KIND="${ORCH_AGENT_KIND:-claude}"
 FIRST_INPUT="${ORCH_FIRST_INPUT-/advisor fable}"
 ADVISOR_FALLBACK="${ORCH_ADVISOR_FALLBACK-/advisor opus}"
 WAYFINDER="${ORCH_WAYFINDER:-/mattpocock-skills:wayfinder}"
+read -r -a AGENT_ARGS <<< "${ORCH_AGENT_ARGS:-}"
 USE_WORKTREE="${ORCH_WORKTREE:-1}"
 WORKTREE_LINKS="${ORCH_WORKTREE_LINKS-node_modules}"
 touch "$STATE/worktrees"
@@ -188,7 +190,7 @@ spawn() {
   echo "$key" >> "$STATE/launched"
   tab=$(herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd "$cwd" --label "$label" --no-focus)
   pane=$(echo "$tab" | python -c "import sys,json;print(json.load(sys.stdin)['result']['root_pane']['pane_id'])" | tr -d '\r')
-  if ! herdr agent start "t$key" --kind "$AGENT_KIND" --pane "$pane" --timeout 60000 > /dev/null; then
+  if ! herdr agent start "t$key" --kind "$AGENT_KIND" --pane "$pane" --timeout 60000 ${AGENT_ARGS[@]+-- "${AGENT_ARGS[@]}"} > /dev/null; then
     log "t$key start FAIL"; return 1
   fi
   [ -n "$FIRST_INPUT" ] && set_first_input "t$key"
