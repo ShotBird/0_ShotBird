@@ -7,6 +7,7 @@
 #   ORCH_FIRST_INPUT  에이전트 기동 직후 첫 입력 (기본 "/advisor fable", 빈 문자열이면 생략)
 #   ORCH_ADVISOR_FALLBACK  Fable advisor를 못 쓸 때 보낼 입력 (기본 "/advisor opus", 빈 문자열이면 폴백 안 함)
 #   ORCH_WAYFINDER    결정 티켓에 쓰는 wayfinder 호출 (기본 "/mattpocock-skills:wayfinder")
+#   ORCH_MAX_SESSIONS 동시에 떠 있는 병렬 세션(t<키>) 상한 (기본 6 — autolaunch가 넘으면 다음 주기로 미룬다)
 #   ORCH_WORKTREE     구현 세션마다 자기 git worktree(<리포>-t<키>, 브랜치 orch/t<키>) — 기본 1, 0이면 옛 방식(같은 작업 트리)
 #   ORCH_WORKTREE_LINKS  worktree에 본 폴더를 가리키는 링크로 둘 gitignore 폴더(공백 구분, 기본 "node_modules" — 본 폴더에 있을 때만)
 # 리포별 세션 규칙 덮어쓰기: <리포>/.orchestra/rules-{decide,impl}.txt → <리포>/docs/agents/orchestra/rules-*.txt → 스킬 기본값
