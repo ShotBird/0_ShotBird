@@ -1,6 +1,6 @@
 #!/bin/bash
 # 사용: autoclose.sh   (메인 세션이 백그라운드로 띄운다)
-# 오케스트라가 띄운 세션(t<키>)만 대상. 완료 = 이슈 CLOSED(키 "<번호>r"은 "#<번호>" 언급 커밋 존재)
+# 오케스트라가 띄운 세션(t<키>)만 대상. 완료 = 이슈 CLOSED(키 "<번호>r"은 origin/main에 "#<번호>" 언급 커밋 존재) + 병합 큐(merge.sh)에 대기 항목 없음
 # + 에이전트 idle/done이 1분 간격 연속 2회 → 그 탭을 닫는다. blocked(질문창)·working은 닫지 않는다.
 # 탭을 닫은 뒤 그 세션의 worktree를 지운다(worktree_drop). 도는 김에 advisor_sweep — Fable advisor가 실패한 idle 세션을 /advisor opus로(lib.sh).
 # 남은 t<키> 세션이 없고 autolaunch가 끝났으면 종료.
@@ -22,10 +22,11 @@ for a in json.load(sys.stdin)['result']['agents']:
     advisor_sweep "$name" "$st"
     key=${name#t}; num=${key%r}
     if [ "$key" != "$num" ]; then
-      [ -n "$(git -C "$REPO" log --oneline -E --grep="#$num([^0-9]|$)" -1)" ] && fin=y || fin=
+      [ -n "$(git -C "$REPO" log origin/main --oneline -E --grep="#$num([^0-9]|$)" -1)" ] && fin=y || fin=
     else
       [ "$(state_of "$num")" = CLOSED ] && fin=y || fin=
     fi
+    [ "$fin" = y ] && queue_has_pending "$key" && fin=   # 병합 큐에 남아 있으면 아직 main에 없다
     if [ "$fin" = y ] && { [ "$st" = idle ] || [ "$st" = done ]; }; then
       label=$(herdr tab get "$tab" | python -c "import sys,json;print(json.load(sys.stdin)['result']['tab'].get('label',''))" | tr -d '\r')
       case "$label" in *"#$key") ;; *) continue ;; esac   # 오케스트라가 만든 탭만
@@ -51,10 +52,11 @@ for t in j('tab','list')['result'].get('tabs',[]):
     [ -z "$key" ] && continue
     num=${key%r}
     if [ "$key" != "$num" ]; then
-      [ -n "$(git -C "$REPO" log --oneline -E --grep="#$num([^0-9]|$)" -1)" ] && fin=y || fin=
+      [ -n "$(git -C "$REPO" log origin/main --oneline -E --grep="#$num([^0-9]|$)" -1)" ] && fin=y || fin=
     else
       [ "$(state_of "$num")" = CLOSED ] && fin=y || fin=
     fi
+    [ "$fin" = y ] && queue_has_pending "$key" && fin=   # 병합 큐에 남아 있으면 아직 main에 없다
     [ "$fin" = y ] || { unset "seen[o$key]"; continue; }
     if [ -n "${seen[o$key]}" ]; then
       herdr tab close "$tab" > /dev/null && log "closed orphan tab #$key (에이전트 없음)"

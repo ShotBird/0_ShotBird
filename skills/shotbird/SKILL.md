@@ -24,7 +24,7 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
   진행 중 = 열림+assignee 있는 이슈 · verify 큐 = `gh issue list --state closed --label verify:browser` ·
   미취합 = 번호 ≥ min인 닫힌 이슈 중 `.orchestra/consolidated`에 없는 것. 스크립트·탭 세션은 clear와 무관하게 계속 돌고, wake 알림은 새 대화로 온다.
 - **도는 스크립트를 먼저 확인한다** — `ps -ef | grep shotbird/scripts`. **돌고 있으면 끄지 않는다**(탭 세션을 받아 주는 중이다). `stop.sh`는 사용자가 오케스트라를 끝내라고 할 때나 스크립트를 고쳐 다시 띄울 때만.
-- **이어받기 + 새 할 일을 한 번에**: `/shotbird 이어서 — <새 목표>`. ① 위 이어받기로 상태를 읽고 미취합 티켓부터 취합 ② 새 목표를 차팅해 티켓을 만든다 — **스크립트는 다시 띄우지 않는다**: autolaunch의 범위(번호 ≥ min)에 새 티켓이 자동으로 들어간다 ③ wake가 끝나 있으면(백그라운드 작업 목록에 없으면) `wake.sh <min>`만 다시 띄운다. 스크립트가 하나도 없을 때만 셋 다 기동.
+- **이어받기 + 새 할 일을 한 번에**: `/shotbird 이어서 — <새 목표>`. ① 위 이어받기로 상태를 읽고 미취합 티켓부터 취합 ② 새 목표를 차팅해 티켓을 만든다 — **스크립트는 다시 띄우지 않는다**: autolaunch의 범위(번호 ≥ min)에 새 티켓이 자동으로 들어간다 ③ wake가 끝나 있으면(백그라운드 작업 목록에 없으면) `wake.sh <min>`만 다시 띄운다. 스크립트가 하나도 없을 때만 넷 다 기동(merge.sh 포함).
 
 `S`는 이 스킬의 scripts 폴더(이 SKILL.md 옆 `scripts/`)다.
 
@@ -33,8 +33,8 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
 | 누가 | 하는 일 | 하지 않는 일 |
 |---|---|---|
 | **메인(너)** | 지도·티켓 정의(wayfinder 차팅), 병렬 가능 여부 판정, **충돌 티켓을 native blocking으로 직렬화**, 결과를 지도 Decisions에 취합, 병렬 세션이 "메인 세션:"으로 넘긴 일 처리(문서 이관·규칙 반영·교차 티켓 전달), 스크립트 기동 | 티켓 자체를 풀기 |
-| **병렬 세션** | claim → 결정(grilling·research) 또는 구현(task) → resolution comment(끝에 `Decisions 요지:`) → close. 후속 티켓은 직접 만들어 sub-issue + blocking | 지도 본문 편집, 결정 세션의 리포 수정·커밋 |
-| **스크립트** | frontier 자동 기동 · 완료 탭 닫기 · 종결 시 메인 깨우기 | 판단 |
+| **병렬 세션** | claim → 결정(grilling·research) 또는 구현(task) → resolution comment(끝에 `Decisions 요지:`) → close(구현은 close 대신 병합 큐 등록 — 병합기가 닫는다). 후속 티켓은 직접 만들어 sub-issue + blocking | 지도 본문 편집, 결정 세션의 리포 수정·커밋, **main push** |
+| **스크립트** | frontier 자동 기동 · 완료 탭 닫기 · 종결 시 메인 깨우기 · **병합 큐 → main(merge.sh, main push는 여기 하나)** | 판단 |
 
 세션 규칙은 `scripts/rules-decide.txt`·`rules-impl.txt`가 프롬프트에 붙는다. 리포별로 바꾸려면 `<리포>/.orchestra/rules-*.txt` 또는 `<리포>/docs/agents/orchestra/rules-*.txt`를 두면 그것이 우선한다.
 
@@ -51,12 +51,13 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
    | 이미 claim된 티켓 | frontier에서 빠진다 — 다시 돌리려면 assignee를 비우거나 `spawn.sh` |
 
    blocking API: `gh api --method POST repos/<o>/<r>/issues/<child>/dependencies/blocked_by -F issue_id=<blocker database id>`.
-3. **기동** — 셋 다 백그라운드로:
+3. **기동** — 넷 다 백그라운드로:
 
    ```bash
    bash $S/autolaunch.sh <min>   # 2분마다 frontier → 탭 (task=구현, 그 밖=wayfinder 결정)
-   bash $S/autoclose.sh          # 티켓 CLOSED + idle 2회 연속 → 탭 닫기
-   bash $S/wake.sh <min>         # 미취합 종결 티켓 또는 정체 세션이 생기면 끝나며 메인을 깨움
+   bash $S/autoclose.sh          # 티켓 CLOSED + 병합 큐 대기 없음 + idle 2회 연속 → 탭 닫기
+   bash $S/wake.sh <min>         # 미취합 종결 티켓·정체 세션·병합 큐 막힘이 생기면 끝나며 메인을 깨움
+   ORCH_MERGE_TEST="<리포 전체 테스트 명령>" bash $S/merge.sh   # 병합기 — 아래 "병합 큐"
    ```
 
    탭 = `<effort> #<번호>`, 에이전트 = `t<번호>`, 구현(task) 세션의 작업 폴더 = `<리포>-t<번호>` worktree, 첫 입력 `/advisor fable`(`ORCH_FIRST_INPUT`로 변경) → 작업 프롬프트.
@@ -67,6 +68,8 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
    - `메인 세션:` 줄·문서 반영 요청 처리 → 커밋·푸시.
    - 새로 생긴 티켓을 다시 병렬 판정(2) — 충돌이면 blocking. 풀린 것은 autolaunch가 띄운다.
    - **정체(`stalled`)**: 세션이 티켓을 연 채 idle로 멈춘 것 — 그 탭 화면(`herdr agent read t<번호> --source recent-unwrapped`)과 코멘트를 읽고, 남은 것이 사용자 결정이면 사용자에게 묻고 답을 그 세션에 전하거나(질문창이 아닐 때만) 메인이 코멘트로 정리해 닫는다. 브라우저 확인만 남았으면 `verify:browser` 라벨을 붙여 닫는다.
+   - **`merge queue stuck`**: 대기 항목이 있는데 병합기가 안 돈다(`merger-down` → merge.sh 기동) 또는 가장 오래된 대기가 `ORCH_MERGE_STALE_MIN`(기본 30)분을 넘겼다(`merge-slow` → `orchestra.log`의 `merge ` 줄·`.orchestra/merge-logs/`로 원인 확인).
+   - **`merge rejected, no session`**: 병합기가 반려했는데 받을 세션이 없다(탭이 죽음 — 반려된 이슈는 열려 있어 autoclose가 닫지 않는다) — `.orchestra/launched`에서 그 번호를 지우고 `spawn.sh <번호>`: 남아 있는 브랜치 `orch/t<번호>`의 worktree에서 새 세션이 반려 코멘트를 보고 고쳐 재등록한다.
    - **verify 큐**: `verify:browser` 라벨이 붙은 닫힌 티켓 = 브라우저 확인만 남은 것. 메인이 **한 번에 하나씩**(브라우저 프로필 공유) 코멘트의 "남은 브라우저 확인" 절차대로 확인 → 결과 코멘트 → 라벨 제거. 육안 판정은 스크린샷으로 사용자에게 묻는다. 문제가 나오면 새 구현 티켓.
    - **취합 보류**: resolution에 `결정 밖 항목:` 줄이 없으면 취합하지 않고 그 티켓에 보충을 요청한다. 있으면 후속 번호를 병렬 판정(2)으로.
    - **verify 기록**: `verify:browser` 확인 코멘트는 커밋 해시·서버 포트·데이터 폴더·확인 항목 n/m 4칸, 부분 PASS는 라벨 유지(닫힘 ≠ 검증됨). 도메인·모델 결정은 `verify:domain` + "실측 검증 상태" 줄 — 실측으로 확인되기 전까지 지도 Decisions 줄 끝에 `(미검증)`.
@@ -75,10 +78,26 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
    - 처리한 번호를 `.orchestra/consolidated`에 적고 `wake.sh <min>`을 다시 띄운다.
 5. **종료** — 범위 안 열린 티켓이 skip 말고 0이면 autolaunch가, 남은 탭이 없으면 autoclose가 끝난다. `stop.sh`로 마무리하고 사용자에게 산출물(결정·커밋·문서·파생 티켓)을 표로 종합 보고.
 
+## 병합 큐 (merge.sh)
+
+병렬 세션이 저마다 `rebase → 전체 테스트 → push origin HEAD:main`을 돌면 한 바퀴 사이 main이 움직여 non-fast-forward 거절 → 재시도마다 전체 테스트가 CPU를 나눠 써 벽시계 테스트까지 흔들린다(악순환). 그래서 **main에 합치는 곳을 병합기 하나로 모은다.**
+
+- **세션**: 자기 worktree에서 전체 테스트 green → `bash $S/enqueue.sh <번호>` — 자기 브랜치 `orch/t<번호>`를 origin에 올리고(`--force-with-lease`, 자기 브랜치만) `.orchestra/merge-queue`에 `<번호> <커밋> <epoch>` 한 줄. resolution comment를 남기고 **close하지 않고 끝낸다**(병합 대기 idle은 정체가 아니다). 이 리포에 커밋이 없으면 종료 코드 2 → 세션이 직접 close.
+- **병합기**(한 번에 하나, `.orchestra/merge.lock`, 전용 worktree `<리포>-merge`): 큐에서 최대 `ORCH_MERGE_BATCH`(기본 4)개 → origin/main 위에 차례로 cherry-pick → **전체 테스트 1회** → green이면 시험한 바로 그 커밋을 main에 push(fast-forward만, force 금지) → 이슈에 병합 커밋 코멘트 + **close**(닫힘 = main에 있음).
+  - 빨강 → 반으로 나눠 재시험(bisect), 범인만 반려. 1건짜리 빨강은 `ORCH_MERGE_RETRY`(기본 1)번 더 시험 — 벽시계 테스트 같은 가짜 실패는 재시험 green이면 병합하고 `merge flaky:`로 기록(가짜 실패가 잦으면 그 테스트를 고칠 것 — bisect를 헛돌게 한다).
+  - cherry-pick 충돌: origin/main 단독으로도 충돌 → 반려("rebase 후 재등록"). 묶음 앞 항목과만 충돌 → 다음 묶음으로 미룸.
+  - `ORCH_MERGE_FORBID`(확장 정규식) 경로를 커밋한 항목 → 반려(배포 산출물 등).
+  - 반려 알림 = 이슈 코멘트(테스트 로그 끝 40줄) + 세션이 idle/done이면 herdr 메시지(`[병합기] …`). 세션은 고쳐서 같은 명령으로 재등록 — 같은 번호는 마지막 줄이 유효.
+- **main이 병합기 밖에서 움직이면**(메인 자신의 통합 빌드·문서 커밋 — 이 예외만 직접 push) 병합기 push가 거절된다 → fetch 후 묶음을 새 main 위에 다시 올려, 새 main 커밋과 묶음의 파일이 겹치지 않으면 재시험 없이 push, 겹치면 대기로 되돌려 다음 주기에 재시험(`merge push rejected` 기록).
+- 설정: `ORCH_MERGE_TEST`(필수 — 리포 전체 테스트 명령; 없으면 `.orchestra/merge-test` 첫 줄) · `ORCH_MERGE_BATCH` · `ORCH_MERGE_RETRY` · `ORCH_MERGE_TIMEOUT`(1800초) · `ORCH_MERGE_FORBID` · `ORCH_MERGE_INTERVAL`(60초) · `ORCH_MERGE_PUSH_RETRY`(3) · `ORCH_MERGE_STALE_MIN`(wake, 30분). 리포별 값은 그 리포 트래커 문서의 Orchestra operations 절에 적는다.
+- 통계: `bash $S/merge.sh --stats ["MM-DD HH:MM"]` — 묶음·push·non-ff 거절·병합 항목(커밋)·반려·미룸·전체 테스트 수·**항목당/커밋당 테스트**. 수동 처리: `merge.sh --once`.
+- 자가 시험: `bash $S/test/merge-selftest.sh` — 임시 bare origin에서 1건 깨뜨리기(bisect)·충돌 반려·묶음 안 충돌 미룸·flaky 재시험·시험 중 main 이동·금지 경로·재등록(BOM/CRLF 줄)·이미 main·락 경합·enqueue 예외. 스크립트를 고치면 돌린다.
+- **전환**: 옛 규칙(세션이 직접 main push)으로 도는 세션과 병합기는 같이 돌아도 된다 — 세션의 직접 push는 병합기에게 "main이 밖에서 움직임"일 뿐이다. 도는 세션은 옛 규칙으로 끝나게 두고, 새로 뜨는 세션부터 새 rules-impl을 받는다(리포 `.orchestra/rules-impl.txt` 오버라이드가 있으면 그것도 갱신).
+
 ## 안전 규칙
 
-- **세션은 idle로 끝내지 않는다**(2026-09-24 사건 — 구현 3건이 "브라우저 확인 남음"으로 티켓을 연 채 멈춰, 사용자는 끝난 줄 알았고 autoclose·wake는 종결을 못 봤다). 브라우저 확인만 남으면 `verify:browser`로 닫고, 사용자 결정이 남으면 닫기 전에 AskUserQuestion. 그래도 멈추면 wake가 '정체'로 메인을 깨운다.
-- **구현 세션 = 자기 git worktree**(`ORCH_WORKTREE=1` 기본): `spawn_ticket`이 `<리포>-t<번호>` 폴더에 브랜치 `orch/t<번호>`를 origin/main에서 만들고 그 폴더에서 탭을 띄운다. 본 폴더의 gitignore 폴더(`ORCH_WORKTREE_LINKS`, 기본 `node_modules` — 있을 때만)는 junction으로 공유. 세션은 자기 폴더에서 자유롭게 커밋하고 끝에 `fetch → rebase origin/main → 테스트 → push origin HEAD:main`(non-ff면 반복, force 금지, 배포 산출물은 커밋하지 않음). autoclose가 탭을 닫으면 그 worktree를 지우고, 브랜치는 main에 합쳐졌을 때만 지운다(아니면 남기고 로그). 오케스트라가 만든 worktree만 `.orchestra/worktrees`에 적고 지운다(사람이 만든 worktree 보호).
+- **세션은 idle로 끝내지 않는다**(2026-09-24 사건 — 구현 3건이 "브라우저 확인 남음"으로 티켓을 연 채 멈춰, 사용자는 끝난 줄 알았고 autoclose·wake는 종결을 못 봤다). 브라우저 확인만 남으면 `verify:browser`를 붙여 닫고(구현은 큐 등록 — 병합기가 닫는다), 사용자 결정이 남으면 닫기·등록 전에 AskUserQuestion. 그래도 멈추면 wake가 '정체'로 메인을 깨운다.
+- **구현 세션 = 자기 git worktree**(`ORCH_WORKTREE=1` 기본): `spawn_ticket`이 `<리포>-t<번호>` 폴더에 브랜치 `orch/t<번호>`를 origin/main에서 만들고 그 폴더에서 탭을 띄운다. 본 폴더의 gitignore 폴더(`ORCH_WORKTREE_LINKS`, 기본 `node_modules` — 있을 때만)는 junction으로 공유. 세션은 자기 폴더에서 자유롭게 커밋하고 끝에 `fetch → rebase origin/main → 테스트 → enqueue.sh <번호>`(병합 큐 등록, 배포 산출물은 커밋하지 않음 — main push는 병합기만). autoclose가 탭을 닫으면 그 worktree를 지우고, 브랜치는 main에 합쳐졌을 때만 지운다(아니면 남기고 로그 — 병합기가 다시 올린 커밋은 해시가 바뀌므로 `branch_merged`가 merge-state 기록·`git cherry`로도 판정). 오케스트라가 만든 worktree만 `.orchestra/worktrees`에 적고 지운다(사람이 만든 worktree 보호).
 - 결정·조사 세션은 본 폴더에서 돈다(리포 파일 수정 금지). worktree를 못 만들면 구현 세션도 본 폴더로 떨어지고, 그때는 옛 규칙(커밋은 `git commit -- <자기 경로>`, add는 자기 파일만, `stash`·`checkout --` 금지)이 프롬프트에 붙는다.
 - **본 폴더는 세션이 합친 뒤에도 옛 코드다** — 메인이 취합할 때 `git pull`(본 폴더에 남의 WIP가 없으면 `--ff-only`)부터 한 뒤 빌드·서버 확인을 한다. 메인 자신의 커밋도 `git commit -- <경로>`로 한정.
 - 지도 본문은 메인만 고친다(동시 편집은 덮어쓰기).
@@ -91,4 +110,5 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
 
 ## 상태 파일 (`<리포>/.orchestra/`, gitignore 권장)
 
-`launched`(띄운 키 — 다시 안 띄움) · `worktrees`(오케스트라가 만든 worktree 키 — autoclose가 지울 대상) · `advisor_fallback`(Opus로 바꾼 세션) · `skip`(자동 기동 제외 — 오케스트라 판정 대기) · `human-queue.tsv`(사람 대기열 — 번호·누가·무엇·기한·마지막 확인, 자동 기동 제외) · `human_digest_date` · `review_mark`(마지막 교차 리뷰 커밋) · `consolidated`(취합 끝난 번호) · `stalled_reported`(정체 보고한 번호) · `extra/<번호>`(티켓별 추가 지시) · `orchestra.log`.
+`launched`(띄운 키 — 다시 안 띄움) · `worktrees`(오케스트라가 만든 worktree 키 — autoclose가 지울 대상) · `advisor_fallback`(Opus로 바꾼 세션) · `skip`(자동 기동 제외 — 오케스트라 판정 대기) · `human-queue.tsv`(사람 대기열 — 번호·누가·무엇·기한·마지막 확인, 자동 기동 제외) · `human_digest_date` · `review_mark`(마지막 교차 리뷰 커밋) · `consolidated`(취합 끝난 번호) · `stalled_reported`(정체 보고한 번호) · `extra/<번호>`(티켓별 추가 지시) · `orchestra.log` ·
+병합 큐: `merge-queue`(세션이 덧붙임 — `<키> <커밋> <epoch>`) · `merge-state`(병합기 결과 — `<키> <커밋> merged <main 커밋> | rejected <사유> | skipped <사유>`) · `merge-notify`(보류 중인 세션 메시지) · `merge.lock/`(병합기 pid) · `merge-logs/`(테스트 로그 최근 40개) · `merge-test`(선택 — 테스트 명령) · `merge_alarm` · `merge_rejected_reported` · `unmerged_reported`.

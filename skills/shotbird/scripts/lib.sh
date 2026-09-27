@@ -10,6 +10,8 @@
 #   ORCH_MAX_SESSIONS 동시에 떠 있는 병렬 세션(t<키>) 상한 (기본 6 — autolaunch가 넘으면 다음 주기로 미룬다)
 #   ORCH_WORKTREE     구현 세션마다 자기 git worktree(<리포>-t<키>, 브랜치 orch/t<키>) — 기본 1, 0이면 옛 방식(같은 작업 트리)
 #   ORCH_WORKTREE_LINKS  worktree에 본 폴더를 가리키는 링크로 둘 gitignore 폴더(공백 구분, 기본 "node_modules" — 본 폴더에 있을 때만)
+#   ORCH_GH_REPO      owner/name 직접 지정(기본 = gh repo view) — GitHub 원격이 없는 시험 리포에서 merge.sh 자가 시험용
+#   병합기(merge.sh) 설정은 merge.sh 머리말 참조.
 # 리포별 세션 규칙 덮어쓰기: <리포>/.orchestra/rules-{decide,impl}.txt → <리포>/docs/agents/orchestra/rules-*.txt → 스킬 기본값
 
 # Git Bash(MSYS)는 "/advisor fable"처럼 /로 시작하는 인자를 Windows 경로("C:/Program Files/Git/advisor fable")로 바꿔
@@ -18,7 +20,7 @@ export MSYS_NO_PATHCONV=1
 
 SKILL_SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "git 리포 안에서 실행할 것"; exit 1; }
-GH_REPO="$(cd "$REPO" && gh repo view --json nameWithOwner --jq .nameWithOwner)" || { echo "gh repo view 실패"; exit 1; }
+GH_REPO="${ORCH_GH_REPO:-$(cd "$REPO" && gh repo view --json nameWithOwner --jq .nameWithOwner)}" || { echo "gh repo view 실패"; exit 1; }
 STATE="$REPO/.orchestra"
 mkdir -p "$STATE/extra"
 touch "$STATE/launched" "$STATE/skip" "$STATE/consolidated" "$STATE/human-queue.tsv"
@@ -90,6 +92,15 @@ advisor_sweep() {
 worktree_path() { echo "${REPO}-t$1"; }
 worktree_branch() { echo "orch/t$1"; }
 winpath() { cygpath -w "$1" 2>/dev/null || echo "$1"; }
+fwdpath() { cygpath -m "$1" 2>/dev/null || echo "$1"; }   # C:/…/… — Git Bash·PowerShell 어느 쪽에 붙여도 백슬래시가 안 뭉개진다
+
+# worktree_links <wt> — 본 폴더의 gitignore 폴더(ORCH_WORKTREE_LINKS, node_modules 등)를 링크(junction)로 — 설치 시간·디스크 절약
+worktree_links() {
+  local d
+  for d in $WORKTREE_LINKS; do
+    [ -d "$REPO/$d" ] && [ ! -e "$1/$d" ] && cmd /c mklink /J "$(winpath "$1/$d")" "$(winpath "$REPO/$d")" > /dev/null 2>&1
+  done
+}
 
 # worktree_make <key> — origin/main에서 자기 브랜치로 worktree를 만든다(이미 있으면 그대로). 경로를 echo, 실패 시 빈 값.
 #   만든 것만 $STATE/worktrees에 적는다 — worktree_drop은 여기 적힌 것만 지운다(사람이 만든 worktree 보호).
@@ -102,9 +113,7 @@ worktree_make() {
     git -C "$REPO" worktree add -q -b "$br" "$wt" origin/main 2>>"$LOG" \
       || git -C "$REPO" worktree add -q "$wt" "$br" 2>>"$LOG" || { log "t$key worktree add 실패"; return 1; }
     grep -qx "$key" "$STATE/worktrees" || echo "$key" >> "$STATE/worktrees"
-    for d in $WORKTREE_LINKS; do   # 본 폴더의 gitignore 폴더(node_modules 등)를 링크로 — 설치 시간·디스크 절약
-      [ -d "$REPO/$d" ] && [ ! -e "$wt/$d" ] && cmd /c mklink /J "$(winpath "$wt/$d")" "$(winpath "$REPO/$d")" > /dev/null 2>&1
-    done
+    worktree_links "$wt"
     log "t$key worktree $wt ($br)"
   fi
   echo "$wt"
@@ -127,13 +136,45 @@ worktree_drop() {
   [ -d "$wt" ] && ! git -C "$REPO" worktree list --porcelain | grep -qF "worktree $wt" && rm -rf "$wt" 2>>"$LOG"
   if [ -d "$wt" ]; then log "t$key worktree 폴더 삭제 실패 — $wt 남음(수동 정리)"; else log "t$key worktree removed"; fi
   git -C "$REPO" fetch -q origin
-  if git -C "$REPO" merge-base --is-ancestor "$br" origin/main 2>/dev/null; then
+  if branch_merged "$key"; then
     git -C "$REPO" branch -D "$br" > /dev/null 2>&1
   else
     log "t$key 브랜치 $br 는 main에 없음 — 지우지 않고 남김(합치지 않은 커밋 확인 필요)"
   fi
   sed -i "/^$key\$/d" "$STATE/worktrees"
 }
+
+# branch_merged <key> — 브랜치 orch/t<key>의 내용이 origin/main에 있는가.
+#   병합기(merge.sh)는 커밋을 main 위에 다시 올리므로(cherry-pick) 해시가 바뀐다 — 조상 판정만으로는 "main에 없음"이 된다.
+#   ① 조상 ② merge-state에 그 브랜치 끝 커밋이 merged로 기록 ③ git cherry로 같은 패치가 모두 main에 있음 — 하나면 합쳐진 것.
+branch_merged() {
+  local br tip
+  br=$(worktree_branch "$1")
+  tip=$(git -C "$REPO" rev-parse -q --verify "$br^{commit}") || return 1
+  git -C "$REPO" merge-base --is-ancestor "$tip" origin/main 2>/dev/null && return 0
+  awk -v k="$1" -v c="$tip" '$1 == k && $2 == c && $3 == "merged" { f = 1 } END { exit !f }' "$MSTATE" 2>/dev/null && return 0
+  ! git -C "$REPO" cherry origin/main "$tip" 2>/dev/null | grep -q '^+'
+}
+
+# ── 병합 큐 (merge.sh · enqueue.sh) ──
+# merge-queue = 세션이 덧붙이기만 하는 기록: "<키> <커밋 40자> [epoch]" 한 줄. 같은 키는 마지막 줄이 유효(재등록).
+# merge-state = 병합기가 덧붙이는 처리 결과: "<키> <커밋> merged <main 커밋> | rejected <사유> | skipped <사유>".
+# 대기(pending) = 키별 마지막 줄의 (키, 커밋)이 merge-state에 없는 것. 파일을 고쳐 쓰지 않으므로 세션 쓰기와 경합이 없다.
+QUEUE="$STATE/merge-queue"; MSTATE="$STATE/merge-state"
+touch "$QUEUE" "$MSTATE"
+# queue_clean — BOM(UTF-8·UTF-16)·CR·NUL을 벗긴 큐 본문(PowerShell >>가 UTF-16/BOM으로 써도 읽히게)
+queue_clean() { LC_ALL=C sed -e 's/^\xEF\xBB\xBF//' -e 's/^\xFF\xFE//' "$QUEUE" | LC_ALL=C tr -d '\r\000'; }
+# queue_pending — 대기 항목 "키 커밋 epoch"를 등록 순서(키의 마지막 줄 기준)로
+queue_pending() {
+  queue_clean | awk -v st="$MSTATE" '
+    BEGIN { while ((getline l < st) > 0) { split(l, f, " "); done[f[1] " " f[2]] = 1 } }
+    $0 ~ /^[0-9]+r? [0-9a-f]{40}( [0-9]+)?$/ { last[$1] = $2; ep[$1] = ($3 == "" ? 0 : $3); pos[$1] = NR }
+    END { for (k in last) if (!((k " " last[k]) in done)) print pos[k], k, last[k], ep[k] }' | sort -n | cut -d' ' -f2-
+}
+queue_invalid() { queue_clean | grep -nvE '^([0-9]+r? [0-9a-f]{40}( [0-9]+)?)?$'; }   # 형식이 틀린 줄(줄번호:내용)
+queue_has_pending() { queue_pending | awk -v k="$1" '$1 == k { f = 1 } END { exit !f }'; }
+# merger_alive — 병합기 락(merge.lock/pid)의 프로세스가 살아 있는가
+merger_alive() { local p; p=$(cat "$STATE/merge.lock/pid" 2>/dev/null) && [ -n "$p" ] && kill -0 "$p" 2>/dev/null; }
 
 # spawn <key> <tab-label> <prompt> [cwd]
 #   key = 에이전트 이름 접미사(보통 이슈 번호; 닫힌 이슈의 후속 작업은 "<번호>r")
@@ -156,9 +197,10 @@ spawn() {
 
 # rules_text <decide|impl> — 규칙 파일의 <리포>·<skip>을 실제 절대 경로로 바꿔 낸다(worktree 안에서는 .orchestra가 없다).
 rules_text() {
-  local esc='s/[\\&#]/\\&/g' skip repo   # Windows 경로의 \ 가 sed 역참조(\2 등)로 읽히지 않게
+  local esc='s/[\\&#]/\\&/g' skip repo scripts   # Windows 경로의 \ 가 sed 역참조(\2 등)로 읽히지 않게
   skip=$(winpath "$STATE/skip" | sed "$esc"); repo=$(winpath "$REPO" | sed "$esc")
-  sed -e "s#<리포>/\.orchestra/skip#$skip#g" -e "s#<리포>#$repo#g" "$(rules_file "$1")"
+  scripts=$(fwdpath "$SKILL_SCRIPTS" | sed "$esc")   # 세션이 명령으로 붙여 넣을 경로 — 슬래시형
+  sed -e "s#<리포>/\.orchestra/skip#$skip#g" -e "s#<리포>#$repo#g" -e "s#<스크립트>#$scripts#g" "$(rules_file "$1")"
 }
 
 # ticket_prompt <num> <decide|impl> [extra] [worktree]
@@ -169,7 +211,7 @@ ticket_prompt() {
     [ -n "$wt" ] && head="$head
 작업 폴더 = 이 세션 전용 git worktree $(winpath "$wt") (브랜치 $(worktree_branch "$n"), origin/main에서 시작). 본 폴더 $(winpath "$REPO")는 고치지 않는다 — 거기의 gitignore 자료(로컬 문서·설정)는 절대 경로로 읽기만."
     [ -z "$wt" ] && head="$head
-(worktree 없이 본 폴더에서 다른 세션과 같은 작업 트리를 쓴다 — 규칙 3의 worktree 절차 대신: add는 자기 파일만, 커밋은 \`git commit -- <자기 경로들>\`, stash·checkout -- 금지, fetch 후 push.)"
+(worktree 없이 본 폴더에서 다른 세션과 같은 작업 트리를 쓴다 — 규칙 3의 worktree 절차 대신: add는 자기 파일만, 커밋은 \`git commit -- <자기 경로들>\`, stash·checkout -- 금지, rebase·push 없이 \`bash $(fwdpath "$SKILL_SCRIPTS")/enqueue.sh $n --dirty-ok\`로 병합 큐에 등록.)"
     printf '%s\n\n%s\n%s' "$head" "$(rules_text impl)" "$extra"
   else
     map=$(map_of "$n")
