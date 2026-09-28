@@ -74,6 +74,7 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
    - **취합 보류**: resolution에 `결정 밖 항목:` 줄이 없으면 취합하지 않고 그 티켓에 보충을 요청한다. 있으면 후속 번호를 병렬 판정(2)으로.
    - **verify 기록**: `verify:browser` 확인 코멘트는 커밋 해시·서버 포트·데이터 폴더·확인 항목 n/m 4칸, 부분 PASS는 라벨 유지(닫힘 ≠ 검증됨). 도메인·모델 결정은 `verify:domain` + "실측 검증 상태" 줄 — 실측으로 확인되기 전까지 지도 Decisions 줄 끝에 `(미검증)`.
    - **`human queue digest`**(하루 1회): 기한 지난 사람 대기 항목을 사용자에게 알린다. 사람이 해야 시작되는 티켓은 skip이 아니라 `.orchestra/human-queue.tsv`(번호·누가·무엇·기한·마지막 확인)에 둔다 — skip은 오케스트라 판정 대기용.
+   - **`inbox (<폴더>)`**(선택 — `ORCH_INBOX_DIR`로 wake를 띄웠을 때): 받은편지함 폴더에 새 파일이 놓였다. 리포 규약대로 처리(예: 외부에서 들어온 변경 묶음 검사 → 인입 티켓)한다. 본 파일 이름은 `.orchestra/inbox_seen`에 남아 다시 알리지 않는다.
    - **`cross-review due`**: 표식 이후 main 커밋이 `ORCH_REVIEW_EVERY`(기본 60)를 넘은 것. 그 범위(`git diff <표식>..origin/main`)의 **교차 리뷰** research 티켓을 만든다(렌즈 = 같은 규칙 여러 벌·결정 간 모순·문서≠코드·이웃 경로에 같은 수정 미적용). 만든 뒤 `.orchestra/review_mark`를 origin/main으로 옮긴다.
    - 처리한 번호를 `.orchestra/consolidated`에 적고 `wake.sh <min>`을 다시 띄운다.
 5. **종료** — 범위 안 열린 티켓이 skip 말고 0이면 autolaunch가, 남은 탭이 없으면 autoclose가 끝난다. `stop.sh`로 마무리하고 사용자에게 산출물(결정·커밋·문서·파생 티켓)을 표로 종합 보고.

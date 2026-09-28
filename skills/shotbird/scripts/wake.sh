@@ -2,7 +2,7 @@
 # 사용: wake.sh <min>   (메인 세션이 백그라운드로 띄운다 — 끝나면 메인이 깨어난다)
 # 이번 라운드(번호 ≥ min)에서 새로 닫힌, 아직 메인이 취합하지 않은 이슈가 생기면 번호를 출력하고 끝난다.
 # 메인은 취합한 번호를 .orchestra/consolidated에 적고 wake.sh를 다시 띄운다.
-# 그 밖에 깨우는 것: 사람 대기열 하루 1회 요약(human queue digest) · 교차 리뷰 시점(cross-review due) ·
+# 그 밖에 깨우는 것: 사람 대기열 하루 1회 요약(human queue digest) · 받은편지함 새 파일(inbox, ORCH_INBOX_DIR 설정 시) · 교차 리뷰 시점(cross-review due) ·
 #   병합 큐 막힘(merge queue stuck) · 받을 세션 없는 병합 반려(merge rejected, no session) · 정체(stalled).
 . "$(dirname "$0")/lib.sh"
 MIN="${1:?min issue number}"
@@ -16,6 +16,19 @@ while :; do
   # 사람 대기열 요약 — 하루 1회(.orchestra/human_digest_date). 메인은 사용자에게 기한 지난 항목을 알린다.
   if [ -s "$STATE/human-queue.tsv" ] && [ "$(cat "$STATE/human_digest_date" 2>/dev/null)" != "$(date +%F)" ]; then
     date +%F > "$STATE/human_digest_date"; echo "human queue digest:"; human_digest; exit 0
+  fi
+  # 받은편지함 폴더(선택, ORCH_INBOX_DIR — 리포 기준 상대 경로 또는 절대 경로)에 새 파일이 생김.
+  #   메인은 그 파일을 리포 규약대로 처리(예: 반입 번들 검사 → 인입 티켓)하고 wake를 다시 띄운다. 본 파일은 .orchestra/inbox_seen에 적혀 다시 알리지 않는다.
+  if [ -n "${ORCH_INBOX_DIR:-}" ]; then
+    idir="$ORCH_INBOX_DIR"; case "$idir" in /*|[A-Za-z]:*) ;; *) idir="$REPO/$idir" ;; esac
+    touch "$STATE/inbox_seen"
+    if [ -d "$idir" ]; then
+      newf=$(find "$idir" -maxdepth 1 -type f -printf '%f\n' 2>/dev/null | sort | grep -vxF -f "$STATE/inbox_seen")
+      if [ -n "$newf" ]; then
+        printf '%s\n' "$newf" >> "$STATE/inbox_seen"
+        echo "inbox ($ORCH_INBOX_DIR):"; printf '%s\n' "$newf"; exit 0
+      fi
+    fi
   fi
   # 합쳐지지 않은 채 닫힌 세션 — autoclose가 "브랜치 … main에 없음"을 남긴 키(세션이 push를 빠뜨림, 2026-09-27 #577).
   #   메인은 그 브랜치의 커밋을 main에 다시 합치는 후속 작업(<번호>r)을 띄운다. 같은 키는 한 번만(.orchestra/unmerged_reported).
