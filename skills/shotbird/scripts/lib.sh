@@ -8,6 +8,7 @@
 #   ORCH_AGENT_ARGS   에이전트 실행 인자(공백 구분, 기본 없음) — 예: "--effort high". 메인 세션이 /effort로 저장한 기본값과 무관하게 병렬 세션을 고정한다
 #   ORCH_ADVISOR_FALLBACK  Fable advisor를 못 쓸 때 보낼 입력 (기본 "/advisor opus", 빈 문자열이면 폴백 안 함)
 #   ORCH_WAYFINDER    결정 티켓에 쓰는 wayfinder 호출 (기본 "/mattpocock-skills:wayfinder")
+#   ORCH_LAUNCH_HUMAN_QUEUE  1이면 human-queue.tsv 티켓도 자동 기동 — 세션이 사용자와 함께 그 일을 진행한다(기본 0 = 사람 대기열은 기동 제외)
 #   ORCH_MAX_SESSIONS 동시에 떠 있는 병렬 세션(t<키>) 상한 (기본 6 — autolaunch가 넘으면 다음 주기로 미룬다)
 #   ORCH_WORKTREE     구현 세션마다 자기 git worktree(<리포>-t<키>, 브랜치 orch/t<키>) — 기본 1, 0이면 옛 방식(같은 작업 트리)
 #   ORCH_WORKTREE_LINKS  worktree에 본 폴더를 가리키는 링크로 둘 gitignore 폴더(공백 구분, 기본 "node_modules" — 본 폴더에 있을 때만)
@@ -230,6 +231,12 @@ spawn_ticket() {
   local n="$1" extra="$2" mode=decide wt=""
   [ "$(kind_of "$n")" = task ] && mode=impl
   [ -z "$extra" ] && [ -f "$STATE/extra/$n" ] && extra="$(cat "$STATE/extra/$n")"
+  # 사람 대기 티켓(human-queue.tsv)이면 공통 안내 extra/_human을 앞에 붙인다 — 세션이 사용자를 직문직답으로 이끈다
+  if [ -f "$STATE/extra/_human" ] && cut -f1 "$STATE/human-queue.tsv" 2>/dev/null | tr -d '\r' | grep -qx "$n"; then
+    extra="$(cat "$STATE/extra/_human")${extra:+
+
+$extra}"
+  fi
   if [ "$mode" = impl ] && [ "$USE_WORKTREE" = 1 ]; then
     wt=$(worktree_make "$n") || wt=""
     [ -z "$wt" ] && log "t$n worktree 실패 — 본 폴더에서 기동"
@@ -245,7 +252,8 @@ in_scope() { # <state> <min>
 
 # held_ids — 자동 기동에서 뺄 번호 = skip(번호 한 줄, 판정 대기) ∪ human-queue.tsv 첫 열(사람 대기열)
 #   human-queue.tsv 한 줄 = 번호<TAB>누가<TAB>무엇<TAB>기한(YYYY-MM-DD 또는 -)<TAB>마지막 확인(YYYY-MM-DD)
-held_ids() { { cat "$STATE/skip"; cut -f1 "$STATE/human-queue.tsv"; } 2>/dev/null | tr -d '\r' | grep -E '^[0-9]+r?$'; }
+#   ORCH_LAUNCH_HUMAN_QUEUE=1이면 human-queue.tsv는 빼지 않는다(skip만) — 사람 대기 티켓도 세션이 떠서 사용자를 안내
+held_ids() { { cat "$STATE/skip"; [ "${ORCH_LAUNCH_HUMAN_QUEUE:-0}" = 1 ] || cut -f1 "$STATE/human-queue.tsv"; } 2>/dev/null | tr -d '\r' | grep -E '^[0-9]+r?$'; }
 
 # human_digest — 사람 대기열 요약(기한 지남·기한 없음·전체). wake가 하루 1회 출력한다.
 human_digest() {
