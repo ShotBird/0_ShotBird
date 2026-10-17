@@ -224,11 +224,24 @@ spawn() {
     sleep 10
   done
   [ -n "$FIRST_INPUT" ] && set_first_input "t$key"
-  if herdr agent prompt "t$key" "$prompt" > /dev/null; then log "t$key launched $pane ($label)"
-  else
-    sleep 5   # prompt 실패도 1회 재시도 — 세션은 떠 있으므로 같은 세션에 다시 보낸다
-    if herdr agent prompt "t$key" "$prompt" > /dev/null; then log "t$key launched $pane ($label) — prompt 재시도"; else log "t$key prompt FAIL"; fi
-  fi
+  if send_work_prompt "t$key" "$prompt"; then log "t$key launched $pane ($label)"; else log "t$key prompt FAIL — 작업이 시작되지 않음"; fi
+}
+
+# send_work_prompt <agent> <prompt> — 작업 프롬프트를 보내고 실제로 일을 시작했는지(working·blocked) 확인한다.
+#   herdr 0.9.5: prompt가 성공으로 돌아와도 입력이 사라져 세션이 빈 입력칸으로 서 있던 일(2026-10-18 t1098).
+#   --wait는 활동이 안 보이면 agent_prompt_stalled — 그때만 Enter 1회(입력칸에 남은 경우) → 그래도 안 움직이면 다시 보낸다.
+#   일하는 중의 timeout은 시작된 것이다.
+send_work_prompt() {
+  local out i st
+  for i in 1 2; do
+    out=$(herdr agent prompt "$1" "$2" --wait --timeout 20000 2>&1)
+    case "$out" in *agent_prompt_stalled*) ;; *) return 0 ;; esac
+    log "$1 prompt 무반응 ($i/2)"
+    herdr agent send-keys "$1" enter > /dev/null 2>&1; sleep 5
+    st=$(herdr agent get "$1" 2>/dev/null | python -c "import sys,json;print(json.load(sys.stdin)['result']['agent']['agent_status'])" 2>/dev/null | tr -d '\r')
+    case "$st" in working|blocked) return 0 ;; esac
+  done
+  return 1
 }
 
 # prioritize — 표준 입력의 번호 목록을 .orchestra/priority(한 줄에 번호 하나, 위가 먼저) 순서로 앞세운다. 나머지는 원래 순서.
