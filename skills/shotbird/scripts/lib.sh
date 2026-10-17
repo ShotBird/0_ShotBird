@@ -73,6 +73,15 @@ print(st)" | tr -d '\r'
 set_first_input() {
   herdr agent prompt "$1" "$FIRST_INPUT" --wait --timeout 30000 > /dev/null
   case "$FIRST_INPUT" in /advisor*) ;; *) return 0 ;; esac
+  # 기동 직후 첫 입력의 Enter가 먹히지 않아 입력칸에 남으면, 다음 작업 프롬프트가 같은 줄에 붙어
+  # "Invalid advisor model: '<모델>/<작업 프롬프트 전체>'"로 작업이 시작되지 않는다(herdr 0.9.5, 2026-10-17).
+  # 응답이 아직 없으면(unknown) Enter를 한 번 더 보내고 응답을 기다린다.
+  local i
+  for i in 1 2 3; do
+    [ "$(advisor_state "$1")" != unknown ] && break
+    herdr agent send-keys "$1" enter > /dev/null 2>&1
+    sleep 3
+  done
   if [ -n "$ADVISOR_FALLBACK" ] && [ "$(advisor_state "$1")" != ok ]; then
     herdr agent prompt "$1" "$ADVISOR_FALLBACK" --wait --timeout 30000 > /dev/null
     log "$1 advisor fallback at launch → $ADVISOR_FALLBACK"
