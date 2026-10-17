@@ -224,7 +224,13 @@ spawn() {
     sleep 10
   done
   [ -n "$FIRST_INPUT" ] && set_first_input "t$key"
-  if send_work_prompt "t$key" "$prompt"; then log "t$key launched $pane ($label)"; else log "t$key prompt FAIL — 작업이 시작되지 않음"; fi
+  if send_work_prompt "t$key" "$prompt"; then log "t$key launched $pane ($label)"
+  else
+    # 작업이 끝내 시작되지 않으면 그 탭을 닫고 launched에서 빼서 다음 주기에 새 탭으로 다시 띄운다(start 실패와 같은 처리)
+    log "t$key prompt FAIL — 작업이 시작되지 않음, 탭 닫고 다음 주기에 다시"
+    [ -n "$tabid" ] && herdr tab close "$tabid" > /dev/null 2>&1
+    sed -i "/^$key\$/d" "$STATE/launched"; return 1
+  fi
 }
 
 # send_work_prompt <agent> <prompt> — 작업 프롬프트를 보내고 실제로 일을 시작했는지(working·blocked) 확인한다.
@@ -240,6 +246,8 @@ send_work_prompt() {
     herdr agent send-keys "$1" enter > /dev/null 2>&1; sleep 5
     st=$(herdr agent get "$1" 2>/dev/null | python -c "import sys,json;print(json.load(sys.stdin)['result']['agent']['agent_status'])" 2>/dev/null | tr -d '\r')
     case "$st" in working|blocked) return 0 ;; esac
+    # 입력칸에 남은 프롬프트를 비우고 다시 보낸다 — 비우지 않으면 두 벌이 이어 붙는다(2026-10-18 t1116)
+    herdr agent send-keys "$1" ctrl+c > /dev/null 2>&1; sleep 2
   done
   return 1
 }
