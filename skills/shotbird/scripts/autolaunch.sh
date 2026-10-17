@@ -13,7 +13,7 @@ live_sessions() { herdr agent list 2>/dev/null | python -c "
 import sys,json,re
 print(sum(1 for a in json.load(sys.stdin)['result']['agents'] if re.fullmatch(r't\d+r?',a.get('name') or '')))" | tr -d '\r'; }
 while :; do
-  for n in $(frontier "$MIN"); do
+  for n in $(frontier "$MIN" | prioritize); do   # .orchestra/priority 번호가 먼저
     cur=$(live_sessions); [ -z "$cur" ] && cur=0
     if [ "$cur" -ge "$MAX" ]; then log "autolaunch: 세션 $cur/$MAX — 상한, 다음 주기에"; break; fi
     spawn_ticket "$n"

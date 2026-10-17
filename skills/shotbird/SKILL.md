@@ -60,6 +60,7 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
    ORCH_MERGE_TEST="<리포 전체 테스트 명령>" bash $S/merge.sh   # 병합기 — 아래 "병합 큐"
    ```
 
+   **start 실패**는 그 탭을 닫고 새 탭에서 10초 뒤 1회 재시도, 그래도 실패면 `launched`에서 빼서 다음 주기에 다시 띄운다(prompt 실패도 1회 재시도). **먼저 띄울 티켓**은 `.orchestra/priority`(한 줄에 번호 하나, 위가 먼저) — 상한(`ORCH_MAX_SESSIONS`) 안에서 그 번호부터 띄운다.
    탭 = `<effort> #<번호>`, 에이전트 = `t<번호>`, 구현(task) 세션의 작업 폴더 = `<리포>-t<번호>` worktree, 첫 입력 `/advisor fable`(`ORCH_FIRST_INPUT`로 변경) → 작업 프롬프트.
    **Fable을 못 쓰면 Opus**(`ORCH_ADVISOR_FALLBACK`, 기본 `/advisor opus`): 기동 때 응답이 `Advisor set to`가 아니면 곧바로 바꾸고, 도는 중 Fable advisor 호출이 한도·사용 불가로 실패한 세션은 autoclose가 idle/done일 때 1회 바꾼다(`.orchestra/advisor_fallback`). 메인 세션 자신의 advisor가 Fable로 안 되면 사용자에게 `/advisor opus`를 쳐 달라고 알린다.
    티켓 밖 작업: `bash $S/spawn.sh --raw <번호>r "<effort> #<번호>r" "<프롬프트>"` — 완료 판정은 `#<번호>`를 언급한 커밋.
@@ -84,7 +85,7 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
 병렬 세션이 저마다 `rebase → 전체 테스트 → push origin HEAD:main`을 돌면 한 바퀴 사이 main이 움직여 non-fast-forward 거절 → 재시도마다 전체 테스트가 CPU를 나눠 써 벽시계 테스트까지 흔들린다(악순환). 그래서 **main에 합치는 곳을 병합기 하나로 모은다.**
 
 - **세션**: 자기 worktree에서 전체 테스트 green → `bash $S/enqueue.sh <번호>` — 자기 브랜치 `orch/t<번호>`를 origin에 올리고(`--force-with-lease`, 자기 브랜치만) `.orchestra/merge-queue`에 `<번호> <커밋> <epoch>` 한 줄. resolution comment를 남기고 **close하지 않고 끝낸다**(병합 대기 idle은 정체가 아니다). 이 리포에 커밋이 없으면 종료 코드 2 → 세션이 직접 close.
-- **병합기**(한 번에 하나, `.orchestra/merge.lock`, 전용 worktree `<리포>-merge`): 큐에서 최대 `ORCH_MERGE_BATCH`(기본 4)개 → origin/main 위에 차례로 cherry-pick → **전체 테스트 1회** → green이면 시험한 바로 그 커밋을 main에 push(fast-forward만, force 금지) → 이슈에 병합 커밋 코멘트 + **close**(닫힘 = main에 있음).
+- **병합기**(한 번에 하나, `.orchestra/merge.lock`, 전용 worktree `<리포>-merge`): 큐에서 최대 `ORCH_MERGE_BATCH`(기본 4)개 → origin/main 위에 차례로 cherry-pick → **전체 테스트 1회** → green이면 시험한 바로 그 커밋을 main에 push(fast-forward만, force 금지) → 이슈에 병합 커밋 코멘트 + **close**(닫힘 = main에 있음) + **그 브랜치 `orch/t<번호>`를 origin에서 바로 삭제**(원격 브랜치가 쌓이지 않게 — 반려된 브랜치는 남긴다, 끄기 `ORCH_DELETE_MERGED_BRANCH=0`; autoclose가 worktree를 지울 때도 합쳐진 브랜치면 origin에서 지운다).
   - 빨강 → 반으로 나눠 재시험(bisect), 범인만 반려. 1건짜리 빨강은 `ORCH_MERGE_RETRY`(기본 1)번 더 시험 — 벽시계 테스트 같은 가짜 실패는 재시험 green이면 병합하고 `merge flaky:`로 기록(가짜 실패가 잦으면 그 테스트를 고칠 것 — bisect를 헛돌게 한다).
   - cherry-pick 충돌: origin/main 단독으로도 충돌 → 반려("rebase 후 재등록"). 묶음 앞 항목과만 충돌 → 다음 묶음으로 미룸.
   - `ORCH_MERGE_FORBID`(확장 정규식) 경로를 커밋한 항목 → 반려(배포 산출물 등).
@@ -97,6 +98,7 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
 
 ## 안전 규칙
 
+- **기다림이 생기면 바로 사용자에게 한 줄**(2026-10-18 — 질문지를 받은편지함에 넣고 답을 기다리며 사용자 최우선 구현을 skip에 묶어 둔 채 반나절이 지났다): 메인이 무엇을·누구를 기다리는지 그 자리에서 알리고, 기다리는 동안 풀 수 있는 앞 단계는 먼저 띄운다.
 - **세션은 idle로 끝내지 않는다**(2026-09-24 사건 — 구현 3건이 "브라우저 확인 남음"으로 티켓을 연 채 멈춰, 사용자는 끝난 줄 알았고 autoclose·wake는 종결을 못 봤다). 브라우저 확인만 남으면 `verify:browser`를 붙여 닫고(구현은 큐 등록 — 병합기가 닫는다), 사용자 결정이 남으면 닫기·등록 전에 AskUserQuestion. 그래도 멈추면 wake가 '정체'로 메인을 깨운다.
 - **구현 세션 = 자기 git worktree**(`ORCH_WORKTREE=1` 기본): `spawn_ticket`이 `<리포>-t<번호>` 폴더에 브랜치 `orch/t<번호>`를 origin/main에서 만들고 그 폴더에서 탭을 띄운다. 본 폴더의 gitignore 폴더(`ORCH_WORKTREE_LINKS`, 기본 `node_modules` — 있을 때만)는 junction으로 공유. 세션은 자기 폴더에서 자유롭게 커밋하고 끝에 `fetch → rebase origin/main → 테스트 → enqueue.sh <번호>`(병합 큐 등록, 배포 산출물은 커밋하지 않음 — main push는 병합기만). autoclose가 탭을 닫으면 그 worktree를 지우고, 브랜치는 main에 합쳐졌을 때만 지운다(아니면 남기고 로그 — 병합기가 다시 올린 커밋은 해시가 바뀌므로 `branch_merged`가 merge-state 기록·`git cherry`로도 판정). 오케스트라가 만든 worktree만 `.orchestra/worktrees`에 적고 지운다(사람이 만든 worktree 보호).
 - 결정·조사 세션은 본 폴더에서 돈다(리포 파일 수정 금지). worktree를 못 만들면 구현 세션도 본 폴더로 떨어지고, 그때는 옛 규칙(커밋은 `git commit -- <자기 경로>`, add는 자기 파일만, `stash`·`checkout --` 금지)이 프롬프트에 붙는다.
@@ -111,5 +113,5 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
 
 ## 상태 파일 (`<리포>/.orchestra/`, gitignore 권장)
 
-`launched`(띄운 키 — 다시 안 띄움) · `worktrees`(오케스트라가 만든 worktree 키 — autoclose가 지울 대상) · `advisor_fallback`(Opus로 바꾼 세션) · `skip`(자동 기동 제외 — 오케스트라 판정 대기) · `human-queue.tsv`(사람 대기열 — 번호·누가·무엇·기한·마지막 확인, 자동 기동 제외 — `ORCH_LAUNCH_HUMAN_QUEUE=1`이면 기동) · `human_digest_date` · `review_mark`(마지막 교차 리뷰 커밋) · `consolidated`(취합 끝난 번호) · `stalled_reported`(정체 보고한 번호) · `extra/<번호>`(티켓별 추가 지시) · `extra/_human`(사람 대기 티켓 공통 안내) · `orchestra.log` ·
+`launched`(띄운 키 — 다시 안 띄움, start 실패면 빠짐) · `priority`(먼저 띄울 번호 — 선택) · `worktrees`(오케스트라가 만든 worktree 키 — autoclose가 지울 대상) · `advisor_fallback`(Opus로 바꾼 세션) · `skip`(자동 기동 제외 — 오케스트라 판정 대기) · `human-queue.tsv`(사람 대기열 — 번호·누가·무엇·기한·마지막 확인, 자동 기동 제외 — `ORCH_LAUNCH_HUMAN_QUEUE=1`이면 기동) · `human_digest_date` · `review_mark`(마지막 교차 리뷰 커밋) · `consolidated`(취합 끝난 번호) · `stalled_reported`(정체 보고한 번호) · `extra/<번호>`(티켓별 추가 지시) · `extra/_human`(사람 대기 티켓 공통 안내) · `orchestra.log` ·
 병합 큐: `merge-queue`(세션이 덧붙임 — `<키> <커밋> <epoch>`) · `merge-state`(병합기 결과 — `<키> <커밋> merged <main 커밋> | rejected <사유> | skipped <사유>`) · `merge-notify`(보류 중인 세션 메시지) · `merge.lock/`(병합기 pid) · `merge-logs/`(테스트 로그 최근 40개) · `merge-test`(선택 — 테스트 명령) · `merge_alarm` · `merge_rejected_reported` · `unmerged_reported`.

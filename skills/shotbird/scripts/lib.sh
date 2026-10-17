@@ -150,10 +150,20 @@ worktree_drop() {
   git -C "$REPO" fetch -q origin
   if branch_merged "$key"; then
     git -C "$REPO" branch -D "$br" > /dev/null 2>&1
+    drop_remote_branch "$key"   # 병합기가 이미 지웠으면 아무것도 안 함 — 병합기 밖에서 합쳐진 브랜치의 뒷정리
   else
     log "t$key 브랜치 $br 는 main에 없음 — 지우지 않고 남김(합치지 않은 커밋 확인 필요)"
   fi
   sed -i "/^$key\$/d" "$STATE/worktrees"
+}
+
+# drop_remote_branch <key> — main에 합친 브랜치 orch/t<key>를 origin에서 지운다(원격 브랜치 목록이 쌓이지 않게, 2026-10-18 — 합친 브랜치 257개가 남아 있었다).
+#   반려된 브랜치는 세션이 고쳐 다시 올리므로 부르지 않는다. ORCH_DELETE_MERGED_BRANCH=0이면 끈다.
+drop_remote_branch() {
+  [ "${ORCH_DELETE_MERGED_BRANCH:-1}" = 1 ] || return 0
+  git -C "$REPO" ls-remote --exit-code origin "refs/heads/orch/t$1" > /dev/null 2>&1 || return 0
+  if git -C "$REPO" push -q origin --delete "orch/t$1" 2>>"$LOG"; then log "branch orch/t$1 deleted on origin (merged)"
+  else log "branch orch/t$1 origin 삭제 실패 — 남음"; fi
 }
 
 # branch_merged <key> — 브랜치 orch/t<key>의 내용이 origin/main에 있는가.
@@ -198,13 +208,35 @@ spawn() {
     echo "$key" >> "$STATE/launched"; log "skip $key (t$key 이미 실행 중)"; return 0
   fi
   echo "$key" >> "$STATE/launched"
-  tab=$(herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd "$cwd" --label "$label" --no-focus)
-  pane=$(echo "$tab" | python -c "import sys,json;print(json.load(sys.stdin)['result']['root_pane']['pane_id'])" | tr -d '\r')
-  if ! herdr agent start "t$key" --kind "$AGENT_KIND" --pane "$pane" --timeout 60000 ${AGENT_ARGS[@]+-- "${AGENT_ARGS[@]}"} > /dev/null; then
-    log "t$key start FAIL"; return 1
-  fi
+  # start 실패 = 그 탭을 닫고 새 탭에서 1회 재시도. 그래도 실패면 launched에서 빼서 다음 주기에 다시 띄운다
+  # (2026-10-17 22:18 herdr 재시작 중 4건 start FAIL이 launched에 남아 다시 뜨지 않고 방치된 사건).
+  local try tabid
+  for try in 1 2; do
+    tab=$(herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd "$cwd" --label "$label" --no-focus)
+    tabid=$(echo "$tab" | python -c "import sys,json;print(json.load(sys.stdin)['result']['tab']['tab_id'])" 2>/dev/null | tr -d '\r')
+    pane=$(echo "$tab" | python -c "import sys,json;print(json.load(sys.stdin)['result']['root_pane']['pane_id'])" 2>/dev/null | tr -d '\r')
+    [ -n "$pane" ] && herdr agent start "t$key" --kind "$AGENT_KIND" --pane "$pane" --timeout 60000 ${AGENT_ARGS[@]+-- "${AGENT_ARGS[@]}"} > /dev/null && break
+    log "t$key start FAIL ($try/2)"
+    [ -n "$tabid" ] && herdr tab close "$tabid" > /dev/null 2>&1
+    if [ "$try" = 2 ]; then
+      sed -i "/^$key\$/d" "$STATE/launched"; log "t$key start 재시도도 FAIL — launched에서 빼서 다음 주기에 다시 띄운다"; return 1
+    fi
+    sleep 10
+  done
   [ -n "$FIRST_INPUT" ] && set_first_input "t$key"
-  if herdr agent prompt "t$key" "$prompt" > /dev/null; then log "t$key launched $pane ($label)"; else log "t$key prompt FAIL"; fi
+  if herdr agent prompt "t$key" "$prompt" > /dev/null; then log "t$key launched $pane ($label)"
+  else
+    sleep 5   # prompt 실패도 1회 재시도 — 세션은 떠 있으므로 같은 세션에 다시 보낸다
+    if herdr agent prompt "t$key" "$prompt" > /dev/null; then log "t$key launched $pane ($label) — prompt 재시도"; else log "t$key prompt FAIL"; fi
+  fi
+}
+
+# prioritize — 표준 입력의 번호 목록을 .orchestra/priority(한 줄에 번호 하나, 위가 먼저) 순서로 앞세운다. 나머지는 원래 순서.
+#   사용자 최우선 티켓을 상한(ORCH_MAX_SESSIONS) 안에서 먼저 띄우기 위함(2026-10-18).
+prioritize() {
+  [ -s "$STATE/priority" ] || { cat; return; }
+  awk 'NR == FNR { sub(/\r$/, ""); if ($1 != "" && !($1 in r)) r[$1] = NR; next }
+       { print (($1 in r) ? r[$1] : 1000000) "\t" FNR "\t" $1 }' "$STATE/priority" - | sort -n -k1,1 -k2,2 | cut -f3
 }
 
 # rules_text <decide|impl> — 규칙 파일의 <리포>·<skip>을 실제 절대 경로로 바꿔 낸다(worktree 안에서는 .orchestra가 없다).

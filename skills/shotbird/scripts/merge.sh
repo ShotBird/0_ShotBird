@@ -160,6 +160,7 @@ reject() { # <키:커밋> <종류 conflict|test|forbidden|missing> <사유> [테
 merged() { # <키:커밋> <main 커밋> <묶음 크기>
   local key=${1%%:*} sha=${1#*:}
   echo "$key $sha merged $2" >> "$MSTATE"; PROGRESS=1
+  drop_remote_branch "$key"   # 합친 브랜치는 origin에서 바로 지운다(세션 worktree의 로컬 브랜치는 autoclose가)
   [ "$NOTIFY" = 1 ] || return 0
   gh_comment "$key" "병합기: main \`${2:0:9}\`에 병합 — 브랜치 커밋 \`${sha:0:9}\`, 묶음 $3건, 이 묶음 전체 테스트 ${TESTS}회."
   [ "$key" = "${key%r}" ] && [ "$(state_of "$key")" = OPEN ] && gh issue close "$key" --repo "$GH_REPO" > /dev/null 2>>"$LOG" && log "merge closed #$key"

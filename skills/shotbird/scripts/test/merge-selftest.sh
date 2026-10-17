@@ -53,6 +53,7 @@ bash "$S/merge.sh" --once
 ok "101·103·104 병합" '[ "$(st 101)$(st 103)$(st 104)" = mergedmergedmerged ] && onmain f101.txt && onmain f103.txt && onmain f104.txt'
 ok "102만 반려(test)" '[ "$(st 102)" = rejected ] && grep -q "^102 .* rejected test" .orchestra/merge-state && ! onmain f102.txt'
 ok "branch_merged: 101 합쳐짐 · 102 아님" '( . "$S/lib.sh"; branch_merged 101 && ! branch_merged 102 )'
+ok "합친 101 원격 브랜치 삭제 · 반려 102 원격 브랜치 유지" '! git ls-remote --exit-code origin refs/heads/orch/t101 > /dev/null && git ls-remote --exit-code origin refs/heads/orch/t102 > /dev/null'
 
 echo "── 2) 충돌 반려: origin/main과 충돌 + 묶음 안 충돌은 미룸 ──"
 mk 105 shared.txt X105
