@@ -74,6 +74,10 @@ for a in json.load(sys.stdin)['result']['agents']:
       key=${name#t}; [ "$key" != "${key%r}" ] && continue          # 후속 작업(<번호>r)은 티켓 상태로 판정 불가
       grep -qx "$key" "$STATE/stalled_reported" && continue
       printf '%s\n' "$pending" | awk -v k="$key" '$1 == k { f = 1 } END { exit !f }' && { idle[$key]=0; continue; }   # 큐에 올리고 병합 대기 = 정상 idle
+      # 백그라운드 작업(전체 테스트 등)을 기다리는 세션은 idle/done이어도 정체가 아니다 — 화면 아랫줄 'N shell(s)'·'N monitor(s)' 표시(2026-10-18 오탐 반복).
+      if { [ "$st" = idle ] || [ "$st" = done ]; } && herdr agent read "$name" --source visible --lines 8 2>/dev/null | grep -qE '[0-9]+ (shells?|monitors?)\b'; then
+        idle[$key]=0; continue
+      fi
       if { [ "$st" = idle ] || [ "$st" = done ]; } && [ "$(gh issue view "$key" --repo "$GH_REPO" --json state --jq .state)" = OPEN ]; then
         idle[$key]=$(( ${idle[$key]:-0} + 1 ))
         [ "${idle[$key]}" -ge 2 ] && stalled="$stalled $key"
