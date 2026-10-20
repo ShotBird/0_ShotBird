@@ -209,7 +209,7 @@ process_batch() {
     fi
     if [ -n "$FORBID" ]; then
       files=$(git -C "$REPO" log --format= --name-only --no-merges "$BASE..$sha" | grep -E "$FORBID" | sort -u | tr '\n' ' ')
-      [ -n "$files" ] && { reject "$key:$sha" forbidden "병합 금지 경로를 커밋함: $files(되돌린 커밋을 더해 재등록)" ""; continue; }
+      [ -n "$files" ] && { reject "$key:$sha" forbidden "병합 금지 경로를 커밋함: $files(검사는 커밋마다라 되돌림 커밋을 더해도 다시 반려 — 그 경로를 뺀 커밋으로 브랜치를 다시 만들어 재등록: git reset --soft origin/main → 그 경로 git reset·checkout → 다시 커밋)" ""; continue; }
     fi
     cands+=("$key:$sha")
   done <<< "$(queue_pending)"
