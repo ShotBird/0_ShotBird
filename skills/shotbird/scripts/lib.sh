@@ -249,6 +249,17 @@ send_work_prompt() {
     # 입력칸에 남은 프롬프트를 비우고 다시 보낸다 — 비우지 않으면 두 벌이 이어 붙는다(2026-10-18 t1116)
     herdr agent send-keys "$1" ctrl+c > /dev/null 2>&1; sleep 2
   done
+  # Claude Code 2.1.306 + fullscreen 렌더러 꺼짐(인라인 모드)에서는 `agent prompt`의 일반 텍스트가 제출되지 않고(슬래시 명령만 통함)
+  # `pane run`은 제출된다(2026-10-21 t1279 — 'hello'도 안 들어감). 프롬프트를 파일에 쓰고 pane run으로 짧은 안내를 보낸다.
+  local pane pf
+  pane=$(herdr agent get "$1" 2>/dev/null | python -c "import sys,json;print(json.load(sys.stdin)['result']['agent']['pane_id'])" 2>/dev/null | tr -d '\r')
+  [ -n "$pane" ] || return 1
+  mkdir -p "$STATE/tmp"; pf="$STATE/tmp/prompt-$1.txt"; printf '%s' "$2" > "$pf"
+  log "$1 prompt → pane run (파일 $pf)"
+  herdr pane run "$pane" "$(cygpath -m "$pf" 2>/dev/null || echo "$pf") 파일에 작업 프롬프트가 있다. 그 파일을 읽고 그 내용을 지금 받은 프롬프트로 삼아 그대로 수행한다." > /dev/null 2>&1
+  sleep 8
+  st=$(herdr agent get "$1" 2>/dev/null | python -c "import sys,json;print(json.load(sys.stdin)['result']['agent']['agent_status'])" 2>/dev/null | tr -d '\r')
+  case "$st" in working|blocked) return 0 ;; esac
   return 1
 }
 
