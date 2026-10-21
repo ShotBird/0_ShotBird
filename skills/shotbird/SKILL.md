@@ -77,6 +77,7 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
    - **`human queue digest`**(하루 1회): 기한 지난 사람 대기 항목을 사용자에게 알린다. 사람이 해야 시작되는 티켓은 skip이 아니라 `.orchestra/human-queue.tsv`(번호·누가·무엇·기한·마지막 확인)에 둔다 — skip은 오케스트라 판정 대기용. **`ORCH_LAUNCH_HUMAN_QUEUE=1`(autolaunch 환경)이면 사람 대기 티켓도 세션으로 뜬다** — 세션이 사용자를 직문직답으로 이끌어 그 일을 끝낸다. 공통 안내는 `.orchestra/extra/_human`(있으면 사람 대기 티켓 프롬프트 앞에 자동으로 붙음): 한 문항씩·실행 위치 라벨·"지금 못 함"이면 다시 시작 조건을 댓글로 남기고 티켓은 연 채 끝내기. 이 세션들은 사용자 답을 기다리며 슬롯을 오래 잡으므로 `ORCH_MAX_SESSIONS`를 함께 올린다.
    - **`inbox (<폴더>)`**(선택 — `ORCH_INBOX_DIR`로 wake를 띄웠을 때): 받은편지함 폴더에 새 파일이 놓였다. 리포 규약대로 처리(예: 외부에서 들어온 변경 묶음 검사 → 인입 티켓)한다. 본 파일 이름은 `.orchestra/inbox_seen`에 남아 다시 알리지 않는다.
    - **`cross-review due`**: 표식 이후 main 커밋이 `ORCH_REVIEW_EVERY`(기본 60)를 넘은 것. 그 범위(`git diff <표식>..origin/main`)의 **교차 리뷰** research 티켓을 만든다(렌즈 = 같은 규칙 여러 벌·결정 간 모순·문서≠코드·이웃 경로에 같은 수정 미적용). 만든 뒤 `.orchestra/review_mark`를 origin/main으로 옮긴다.
+   - **통합 빌드(배포 산출물 커밋)는 병합된 main 체크아웃에서만** — 테스트가 도는 사이 origin/main이 움직였으면 그 번들은 낡은 것이니 커밋하지 말고 새 main 위에서 다시 빌드한다(2026-10-22 — 빌드 시작 트리로 만든 번들을 나중 main에 얹어 두 티켓의 화면 코드가 빠진 채 배포됐다). 리포에 번들 ↔ 소스 대조 게이트(예: `SPD_BUNDLE_GATE=1 node --test test/bundleFreshness.test.mjs`)가 있으면 빌드 커밋 뒤·push 전에 돌린다.
    - 처리한 번호를 `.orchestra/consolidated`에 적고 `wake.sh <min>`을 다시 띄운다.
 5. **종료** — 범위 안 열린 티켓이 skip 말고 0이면 autolaunch가, 남은 탭이 없으면 autoclose가 끝난다. `stop.sh`로 마무리하고 사용자에게 산출물(결정·커밋·문서·파생 티켓)을 표로 종합 보고.
 
