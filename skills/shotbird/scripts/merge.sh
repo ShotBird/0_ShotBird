@@ -133,15 +133,17 @@ gh_comment() { [ "$NOTIFY" = 1 ] && gh issue comment "${1%r}" --repo "$GH_REPO" 
 # flush_notify — 보류 중인 세션 메시지를 idle/done인 세션에 보낸다. 세션이 없으면 버린다(이슈 코멘트가 남아 있다).
 flush_notify() {
   [ "$NOTIFY" = 1 ] && [ "${HERDR_ENV:-}" = 1 ] && [ -s "$STATE/merge-notify" ] || return 0
-  local agents key msg st keep=""
+  local agents key msg st keep="" pane
   agents=$(live_agents)
   while IFS=$'\t' read -r key msg; do
     [ -z "$key" ] && continue
     st=$(printf '%s\n' "$agents" | awk -v a="t$key" '$1 == a { print $2 }')
     if [ -z "$st" ]; then log "merge notify t$key: 세션 없음 — 이슈 코멘트만"
     elif [ "$st" = idle ] || [ "$st" = done ]; then
-      herdr agent prompt "t$key" "$msg" > /dev/null && log "merge notify t$key 보냄" || keep="$keep$key	$msg
-"
+      # `agent prompt`의 일반 텍스트는 인라인 렌더러 Claude Code에 제출되지 않는다(2026-10-22, lib.sh send_work_prompt와 같은 사유) → pane run
+      pane=$(herdr agent get "t$key" 2>/dev/null | python -c "import sys,json;print(json.load(sys.stdin)['result']['agent']['pane_id'])" 2>/dev/null | tr -d '\r')
+      if [ -n "$pane" ] && herdr pane run "$pane" "$msg" > /dev/null 2>&1; then log "merge notify t$key 보냄"; else keep="$keep$key	$msg
+"; fi
     else keep="$keep$key	$msg
 "; fi
   done < "$STATE/merge-notify"
