@@ -239,6 +239,11 @@ spawn() {
 #   일하는 중의 timeout은 시작된 것이다.
 send_work_prompt() {
   local out i st
+  # pane run(파일 포인터)을 먼저 — Claude Code 2.1.306에서 `agent prompt` 일반 텍스트는 입력칸에 붙기만 하고 제출되지 않는데,
+  # 붙은 뒤 Enter 직후 상태가 잠깐 working으로 읽혀 '시작됨'으로 판정되고 프롬프트가 입력칸에 남은 채 멈췄다(2026-10-22 t1313·t1326).
+  send_prompt_file "$1" "$2" && return 0
+  log "$1 pane run 무반응 — agent prompt로 다시"
+  herdr agent send-keys "$1" ctrl+c > /dev/null 2>&1; sleep 2
   for i in 1 2; do
     out=$(herdr agent prompt "$1" "$2" --wait --timeout 20000 2>&1)
     case "$out" in *agent_prompt_stalled*) ;; *) return 0 ;; esac
@@ -249,9 +254,14 @@ send_work_prompt() {
     # 입력칸에 남은 프롬프트를 비우고 다시 보낸다 — 비우지 않으면 두 벌이 이어 붙는다(2026-10-18 t1116)
     herdr agent send-keys "$1" ctrl+c > /dev/null 2>&1; sleep 2
   done
-  # Claude Code 2.1.306 + fullscreen 렌더러 꺼짐(인라인 모드)에서는 `agent prompt`의 일반 텍스트가 제출되지 않고(슬래시 명령만 통함)
-  # `pane run`은 제출된다(2026-10-21 t1279 — 'hello'도 안 들어감). 프롬프트를 파일에 쓰고 pane run으로 짧은 안내를 보낸다.
-  local pane pf
+  return 1
+}
+
+# send_prompt_file <agent> <prompt> — 프롬프트를 파일에 쓰고 pane run으로 짧은 안내를 보낸 뒤 working·blocked를 기다린다.
+#   Claude Code 2.1.306 + fullscreen 렌더러 꺼짐(인라인 모드)에서는 `agent prompt`의 일반 텍스트가 제출되지 않고(슬래시 명령만 통함)
+#   `pane run`은 제출된다(2026-10-21 t1279 — 'hello'도 안 들어감).
+send_prompt_file() {
+  local pane pf st
   pane=$(herdr agent get "$1" 2>/dev/null | python -c "import sys,json;print(json.load(sys.stdin)['result']['agent']['pane_id'])" 2>/dev/null | tr -d '\r')
   [ -n "$pane" ] || return 1
   mkdir -p "$STATE/tmp"; pf="$STATE/tmp/prompt-$1.txt"; printf '%s' "$2" > "$pf"
@@ -260,6 +270,15 @@ send_work_prompt() {
   # 부하 중에는 파일을 읽고 working으로 바뀌기까지 8초가 넘는다(2026-10-22 t1046·t1205·t1292 — 10초 뒤 판정에 idle) → 최대 40초 폴링
   local w=0
   while [ $w -lt 90 ]; do
+    sleep 5; w=$((w+5))
+    st=$(herdr agent get "$1" 2>/dev/null | python -c "import sys,json;print(json.load(sys.stdin)['result']['agent']['agent_status'])" 2>/dev/null | tr -d '\r')
+    case "$st" in working|blocked) return 0 ;; esac
+  done
+  # 안내 글이 입력칸에 남고 Enter만 빠진 경우(2026-10-22 t1313·t1326 — 첫 pane run 90 s 무반응, 손으로 다시 보내면 바로 시작) → Enter 1회 더
+  log "$1 pane run 90 s 무반응 — Enter 1회"
+  herdr agent send-keys "$1" enter > /dev/null 2>&1
+  w=0
+  while [ $w -lt 20 ]; do
     sleep 5; w=$((w+5))
     st=$(herdr agent get "$1" 2>/dev/null | python -c "import sys,json;print(json.load(sys.stdin)['result']['agent']['agent_status'])" 2>/dev/null | tr -d '\r')
     case "$st" in working|blocked) return 0 ;; esac
