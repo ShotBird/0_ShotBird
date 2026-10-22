@@ -259,7 +259,7 @@ send_work_prompt() {
   herdr pane run "$pane" "$(cygpath -m "$pf" 2>/dev/null || echo "$pf") 파일에 작업 프롬프트가 있다. 그 파일을 읽고 그 내용을 지금 받은 프롬프트로 삼아 그대로 수행한다." > /dev/null 2>&1
   # 부하 중에는 파일을 읽고 working으로 바뀌기까지 8초가 넘는다(2026-10-22 t1046·t1205·t1292 — 10초 뒤 판정에 idle) → 최대 40초 폴링
   local w=0
-  while [ $w -lt 40 ]; do
+  while [ $w -lt 90 ]; do
     sleep 5; w=$((w+5))
     st=$(herdr agent get "$1" 2>/dev/null | python -c "import sys,json;print(json.load(sys.stdin)['result']['agent']['agent_status'])" 2>/dev/null | tr -d '\r')
     case "$st" in working|blocked) return 0 ;; esac
