@@ -2,7 +2,7 @@
 # 사용: wake.sh <min>   (메인 세션이 백그라운드로 띄운다 — 끝나면 메인이 깨어난다)
 # 이번 라운드(번호 ≥ min)에서 새로 닫힌, 아직 메인이 취합하지 않은 이슈가 생기면 번호를 출력하고 끝난다.
 # 메인은 취합한 번호를 .orchestra/consolidated에 적고 wake.sh를 다시 띄운다.
-# 그 밖에 깨우는 것: 사람 대기열 하루 1회 요약(human queue digest) · 받은편지함 새 파일(inbox, ORCH_INBOX_DIR 설정 시) · 교차 리뷰 시점(cross-review due) ·
+# 그 밖에 깨우는 것: 사람 대기열 하루 1회 요약(human queue digest) · 받은편지함 새 파일(inbox, ORCH_INBOX_DIR 설정 시) · 교차 리뷰 시점(cross-review due) · 주기 티켓 시점(periodic due, .orchestra/periodic) ·
 #   병합 큐 막힘(merge queue stuck) · 받을 세션 없는 병합 반려(merge rejected, no session) · 정체(stalled).
 . "$(dirname "$0")/lib.sh"
 MIN="${1:?min issue number}"
@@ -46,6 +46,22 @@ while :; do
   cnt=$(git -C "$REPO" rev-list --count "$mark..origin/main" 2>/dev/null || echo 0)
   if [ "$cnt" -ge "${ORCH_REVIEW_EVERY:-60}" ]; then
     echo "cross-review due: $mark..$(git -C "$REPO" rev-parse --short origin/main) ($cnt commits)"; exit 0
+  fi
+  # 주기 티켓(선택) — .orchestra/periodic 한 줄 = "<이름><TAB><경로><TAB><커밋 수>"(# 주석). 표식 .orchestra/periodic_mark.<이름>(커밋)
+  #   이후 origin/main에서 그 경로를 바꾼 커밋(병합 커밋 제외)이 그 수 이상이면 알린다 — 메인이 기억하지 않아도 스크립트가 때를 잡는다.
+  #   메인은 리포 규약대로 그 주기 티켓을 만들고 표식을 origin/main으로 옮긴다(옮기기 전까지는 다시 띄울 때마다 또 알린다).
+  if [ -s "$STATE/periodic" ]; then
+    while IFS=$'\t' read -r pname ppath pevery; do
+      pname=${pname%$'\r'}; ppath=${ppath%$'\r'}; pevery=${pevery%$'\r'}
+      { [ -z "$pname" ] || [ "${pname#\#}" != "$pname" ] || [ -z "$ppath" ]; } && continue
+      pm="$STATE/periodic_mark.$pname"
+      [ -s "$pm" ] || git -C "$REPO" rev-parse origin/main > "$pm"
+      pmark=$(tr -d '\r\n' < "$pm")
+      pcnt=$(git -C "$REPO" rev-list --count --no-merges "$pmark..origin/main" -- "$ppath" 2>/dev/null || echo 0)
+      if [ "$pcnt" -ge "${pevery:-10}" ]; then
+        echo "periodic due: $pname — $ppath 커밋 $pcnt개 (${pmark:0:9}..$(git -C "$REPO" rev-parse --short origin/main))"; exit 0
+      fi
+    done < "$STATE/periodic"
   fi
   # 병합 큐가 막힘 — 대기 항목이 있는데 병합기(merge.sh)가 안 돌거나, 가장 오래된 대기가 ORCH_MERGE_STALE_MIN(기본 30)분을 넘김.
   #   큐에 올린 세션은 idle이어도 정체로 치지 않으므로(아래) 이것이 대신 막힘을 잡는다. 같은 (종류, 가장 오래된 항목)은 한 번만(.orchestra/merge_alarm).

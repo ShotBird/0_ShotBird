@@ -78,6 +78,7 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
    - **`inbox (<폴더>)`**(선택 — `ORCH_INBOX_DIR`로 wake를 띄웠을 때): 받은편지함 폴더에 새 파일이 놓였다. 리포 규약대로 처리(예: 외부에서 들어온 변경 묶음 검사 → 인입 티켓)한다. 본 파일 이름은 `.orchestra/inbox_seen`에 남아 다시 알리지 않는다.
    - **`cross-review due`**: 표식 이후 main 커밋이 `ORCH_REVIEW_EVERY`(기본 60)를 넘은 것. 그 범위(`git diff <표식>..origin/main`)의 **교차 리뷰** research 티켓을 만든다(렌즈 = 같은 규칙 여러 벌·결정 간 모순·문서≠코드·이웃 경로에 같은 수정 미적용). 만든 뒤 `.orchestra/review_mark`를 origin/main으로 옮긴다.
    - **통합 빌드(배포 산출물 커밋)는 병합된 main 체크아웃에서만** — 테스트가 도는 사이 origin/main이 움직였으면 그 번들은 낡은 것이니 커밋하지 말고 새 main 위에서 다시 빌드한다(2026-10-22 — 빌드 시작 트리로 만든 번들을 나중 main에 얹어 두 티켓의 화면 코드가 빠진 채 배포됐다). 리포에 번들 ↔ 소스 대조 게이트(예: `SPD_BUNDLE_GATE=1 node --test test/bundleFreshness.test.mjs`)가 있으면 빌드 커밋 뒤·push 전에 돌린다.
+   - **`periodic due: <이름>`**(선택 — `.orchestra/periodic` 한 줄 = `<이름><TAB><경로><TAB><커밋 수>`): 표식 `.orchestra/periodic_mark.<이름>` 이후 그 경로를 바꾼 main 커밋이 그 수를 넘었다. 리포 트래커 문서의 규약대로 그 주기 티켓(예: 문서·원고 갱신)을 만들고 표식을 origin/main으로 옮긴다 — 메인이 세던 주기를 스크립트가 잡으므로 컨텍스트 압축 뒤에도 빠지지 않는다.
    - 처리한 번호를 `.orchestra/consolidated`에 적고 `wake.sh <min>`을 다시 띄운다.
 5. **종료** — 범위 안 열린 티켓이 skip 말고 0이면 autolaunch가, 남은 탭이 없으면 autoclose가 끝난다. `stop.sh`로 마무리하고 사용자에게 산출물(결정·커밋·문서·파생 티켓)을 표로 종합 보고.
 
@@ -85,6 +86,7 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
 
 병렬 세션이 저마다 `rebase → 전체 테스트 → push origin HEAD:main`을 돌면 한 바퀴 사이 main이 움직여 non-fast-forward 거절 → 재시도마다 전체 테스트가 CPU를 나눠 써 벽시계 테스트까지 흔들린다(악순환). 그래서 **main에 합치는 곳을 병합기 하나로 모은다.**
 
+- **등록 검사(선택)**: `<리포>/.orchestra/enqueue-check.sh` 또는 `<리포>/docs/agents/orchestra/enqueue-check.sh`가 있으면 enqueue.sh가 그 worktree에서 `<번호>`를 인자로 돌리고, 0이 아니면 등록하지 않는다 — 세션 규칙(티켓별 기록 파일 등)을 잊어도 등록 단계에서 잡힌다.
 - **세션**: 자기 worktree에서 전체 테스트 green → `bash $S/enqueue.sh <번호>` — 자기 브랜치 `orch/t<번호>`를 origin에 올리고(`--force-with-lease`, 자기 브랜치만) `.orchestra/merge-queue`에 `<번호> <커밋> <epoch>` 한 줄. resolution comment를 남기고 **close하지 않고 끝낸다**(병합 대기 idle은 정체가 아니다). 이 리포에 커밋이 없으면 종료 코드 2 → 세션이 직접 close.
 - **병합기**(한 번에 하나, `.orchestra/merge.lock`, 전용 worktree `<리포>-merge`): 큐에서 최대 `ORCH_MERGE_BATCH`(기본 4)개 → origin/main 위에 차례로 cherry-pick → **전체 테스트 1회** → green이면 시험한 바로 그 커밋을 main에 push(fast-forward만, force 금지) → 이슈에 병합 커밋 코멘트 + **close**(닫힘 = main에 있음) + **그 브랜치 `orch/t<번호>`를 origin에서 바로 삭제**(원격 브랜치가 쌓이지 않게 — 반려된 브랜치는 남긴다, 끄기 `ORCH_DELETE_MERGED_BRANCH=0`; autoclose가 worktree를 지울 때도 합쳐진 브랜치면 origin에서 지운다).
   - 빨강 → 반으로 나눠 재시험(bisect), 범인만 반려. 1건짜리 빨강은 `ORCH_MERGE_RETRY`(기본 1)번 더 시험 — 벽시계 테스트 같은 가짜 실패는 재시험 green이면 병합하고 `merge flaky:`로 기록(가짜 실패가 잦으면 그 테스트를 고칠 것 — bisect를 헛돌게 한다).
@@ -94,7 +96,7 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
 - **main이 병합기 밖에서 움직이면**(메인 자신의 통합 빌드·문서 커밋 — 이 예외만 직접 push) 병합기 push가 거절된다 → fetch 후 묶음을 새 main 위에 다시 올려, 새 main 커밋과 묶음의 파일이 겹치지 않으면 재시험 없이 push, 겹치면 대기로 되돌려 다음 주기에 재시험(`merge push rejected` 기록).
 - 설정: `ORCH_MERGE_TEST`(필수 — 리포 전체 테스트 명령; 없으면 `.orchestra/merge-test` 첫 줄) · `ORCH_MERGE_BATCH` · `ORCH_MERGE_RETRY` · `ORCH_MERGE_TIMEOUT`(1800초) · `ORCH_MERGE_FORBID` · `ORCH_MERGE_INTERVAL`(60초) · `ORCH_MERGE_PUSH_RETRY`(3) · `ORCH_MERGE_STALE_MIN`(wake, 30분). 리포별 값은 그 리포 트래커 문서의 Orchestra operations 절에 적는다.
 - 통계: `bash $S/merge.sh --stats ["MM-DD HH:MM"]` — 묶음·push·non-ff 거절·병합 항목(커밋)·반려·미룸·전체 테스트 수·**항목당/커밋당 테스트**. 수동 처리: `merge.sh --once`.
-- 자가 시험: `bash $S/test/merge-selftest.sh` — 임시 bare origin에서 1건 깨뜨리기(bisect)·충돌 반려·묶음 안 충돌 미룸·flaky 재시험·시험 중 main 이동·금지 경로·재등록(BOM/CRLF 줄)·이미 main·락 경합·enqueue 예외. 스크립트를 고치면 돌린다.
+- 자가 시험: `bash $S/test/merge-selftest.sh`(Windows Git Bash에서는 `TMPDIR`를 Windows 경로로 — 예 `TMPDIR="$(cygpath -m "$TEMP")"`; 기본 `/tmp`면 git worktree가 다른 곳에 만들어져 5/17로 떨어진다, 2026-10-22) — 임시 bare origin에서 1건 깨뜨리기(bisect)·충돌 반려·묶음 안 충돌 미룸·flaky 재시험·시험 중 main 이동·금지 경로·재등록(BOM/CRLF 줄)·이미 main·락 경합·enqueue 예외. 스크립트를 고치면 돌린다.
 - **전환**: 옛 규칙(세션이 직접 main push)으로 도는 세션과 병합기는 같이 돌아도 된다 — 세션의 직접 push는 병합기에게 "main이 밖에서 움직임"일 뿐이다. 도는 세션은 옛 규칙으로 끝나게 두고, 새로 뜨는 세션부터 새 rules-impl을 받는다(리포 `.orchestra/rules-impl.txt` 오버라이드가 있으면 그것도 갱신).
 
 ## 안전 규칙

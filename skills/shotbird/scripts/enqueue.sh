@@ -20,6 +20,14 @@ git fetch -q origin || { echo "git fetch 실패"; exit 1; }
 sha=$(git rev-parse HEAD)
 n=$(git rev-list --count --no-merges origin/main..HEAD)
 [ "$n" = 0 ] && { echo "병합할 커밋 없음(HEAD의 변경이 이미 origin/main에 있다) — 큐에 넣지 않는다. 세션이 직접 close."; exit 2; }
+# 리포별 등록 검사(선택) — <리포>/.orchestra/enqueue-check.sh 또는 <리포>/docs/agents/orchestra/enqueue-check.sh가 있으면
+#   이 worktree에서 "<번호>"를 인자로 실행한다(앞의 것이 있으면 그것만). 0이 아니면 등록하지 않는다 — 안내는 그 스크립트가 낸다.
+#   예: 어떤 경로를 바꾼 티켓은 티켓별 기록 파일을 같이 커밋해야 한다(세션 규칙을 사람·LLM이 잊어도 등록 단계에서 잡힌다).
+for chk in "$STATE/enqueue-check.sh" "$REPO/docs/agents/orchestra/enqueue-check.sh"; do
+  [ -f "$chk" ] || continue
+  bash "$chk" "$key" || { echo "등록 검사 실패($chk) — 위 안내대로 고쳐 커밋한 뒤 같은 명령으로 다시 등록"; exit 1; }
+  break
+done
 git push -q --force-with-lease origin "HEAD:refs/heads/orch/t$key" 2>&1 \
   || echo "경고: 브랜치 orch/t$key push 실패 — 등록은 계속한다(병합기는 로컬 객체를 쓴다)"
 printf '%s %s %s\n' "$key" "$sha" "$(date +%s)" >> "$STATE/merge-queue"
