@@ -60,7 +60,7 @@ test "${HERDR_ENV:-}" = 1 && gh auth status && git rev-parse --show-toplevel
    ORCH_MERGE_TEST="<리포 전체 테스트 명령>" bash $S/merge.sh   # 병합기 — 아래 "병합 큐"
    ```
 
-   **start 실패**는 그 탭을 닫고 새 탭에서 10초 뒤 1회 재시도, 그래도 실패면 `launched`에서 빼서 다음 주기에 다시 띄운다(prompt 실패도 1회 재시도). **먼저 띄울 티켓**은 `.orchestra/priority`(한 줄에 번호 하나, 위가 먼저) — 상한(`ORCH_MAX_SESSIONS`) 안에서 그 번호부터 띄운다.
+   **start 실패**는 그 탭을 닫고 새 탭에서 10초 뒤 1회 재시도, 그래도 실패면 `launched`에서 빼서 다음 주기에 다시 띄운다(prompt 실패도 1회 재시도). **메모리 가드**(`ORCH_MIN_FREE_GB`, 기본 0 = 끔): 여유 물리 메모리가 그 GB보다 적으면 그 주기에는 새 세션을 띄우지 않는다 — CPU보다 메모리가 먼저 바닥나는 PC에서 세션 수 상한(`ORCH_MAX_SESSIONS`)과 같이 쓴다(Windows `Get-CimInstance`, 못 재면 가드 없이). **먼저 띄울 티켓**은 `.orchestra/priority`(한 줄에 번호 하나, 위가 먼저) — 상한(`ORCH_MAX_SESSIONS`) 안에서 그 번호부터 띄운다.
    탭 = `<effort> #<번호>`, 에이전트 = `t<번호>`, 구현(task) 세션의 작업 폴더 = `<리포>-t<번호>` worktree, 첫 입력 `/advisor fable`(`ORCH_FIRST_INPUT`로 변경) → 작업 프롬프트.
    **Fable을 못 쓰면 Opus**(`ORCH_ADVISOR_FALLBACK`, 기본 `/advisor opus`): 기동 때 응답이 `Advisor set to`가 아니면 곧바로 바꾸고, 도는 중 Fable advisor 호출이 한도·사용 불가로 실패한 세션은 autoclose가 idle/done일 때 1회 바꾼다(`.orchestra/advisor_fallback`). 메인 세션 자신의 advisor가 Fable로 안 되면 사용자에게 `/advisor opus`를 쳐 달라고 알린다.
    티켓 밖 작업: `bash $S/spawn.sh --raw <번호>r "<effort> #<번호>r" "<프롬프트>"` — 완료 판정은 `#<번호>`를 언급한 커밋.
