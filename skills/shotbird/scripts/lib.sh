@@ -201,6 +201,23 @@ merger_alive() { local p; p=$(cat "$STATE/merge.lock/pid" 2>/dev/null) && [ -n "
 # spawn <key> <tab-label> <prompt> [cwd]
 #   key = 에이전트 이름 접미사(보통 이슈 번호; 닫힌 이슈의 후속 작업은 "<번호>r")
 #   새 탭 1개 + 에이전트 t<key> → 첫 입력 → 작업 프롬프트. cwd 기본 = 본 폴더.
+# 보조 Claude 계정(선택) — <리포>/.orchestra/alt-account 한 줄: <CLAUDE_CONFIG_DIR>|<마지막 날 YYYY-MM-DD>|<effort 공백 구분>
+#   그 effort 티켓 세션을 번갈아(절반) 보조 계정 설정 폴더로 띄운다. 파일이 없거나 날짜가 지나면 꺼짐(2026-10-25).
+#   herdr 칸 셸(PowerShell)에 CLAUDE_CONFIG_DIR을 먼저 넣고 agent start → 그 칸의 Claude가 그 폴더의 로그인을 쓴다.
+alt_account_pick() {
+  local f="$STATE/alt-account" dir until efforts eff n
+  [ -f "$f" ] || return 0
+  IFS='|' read -r dir until efforts < <(tr -d '\r' < "$f" | head -1)
+  [ -n "$dir" ] || return 0
+  [ -n "$until" ] && [[ "$(date +%F)" > "$until" ]] && return 0
+  eff=$(effort_of "$1" 2>/dev/null)
+  case " $efforts " in *" $eff "*) ;; *) return 0 ;; esac
+  n=$(cat "$STATE/alt-account.count" 2>/dev/null || echo 0)
+  echo $((n + 1)) > "$STATE/alt-account.count"
+  [ $((n % 2)) = 1 ] && echo "$dir"
+  return 0
+}
+
 spawn() {
   local key="$1" label="$2" prompt="$3" cwd="${4:-$REPO}" tab pane
   grep -qx "$key" "$STATE/launched" && { log "skip $key (이미 띄움)"; return 0; }
@@ -210,11 +227,14 @@ spawn() {
   echo "$key" >> "$STATE/launched"
   # start 실패 = 그 탭을 닫고 새 탭에서 1회 재시도. 그래도 실패면 launched에서 빼서 다음 주기에 다시 띄운다
   # (2026-10-17 22:18 herdr 재시작 중 4건 start FAIL이 launched에 남아 다시 뜨지 않고 방치된 사건).
-  local try tabid
+  local try tabid alt
+  alt=$(alt_account_pick "$key")
+  [ -n "$alt" ] && log "t$key 보조 계정으로 띄움 ($alt)"
   for try in 1 2; do
     tab=$(herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd "$cwd" --label "$label" --no-focus)
     tabid=$(echo "$tab" | python -c "import sys,json;print(json.load(sys.stdin)['result']['tab']['tab_id'])" 2>/dev/null | tr -d '\r')
     pane=$(echo "$tab" | python -c "import sys,json;print(json.load(sys.stdin)['result']['root_pane']['pane_id'])" 2>/dev/null | tr -d '\r')
+    [ -n "$pane" ] && [ -n "$alt" ] && herdr pane run "$pane" "\$env:CLAUDE_CONFIG_DIR=\"$alt\"" > /dev/null && sleep 2
     [ -n "$pane" ] && herdr agent start "t$key" --kind "$AGENT_KIND" --pane "$pane" --timeout 60000 ${AGENT_ARGS[@]+-- "${AGENT_ARGS[@]}"} > /dev/null && break
     log "t$key start FAIL ($try/2)"
     [ -n "$tabid" ] && herdr tab close "$tabid" > /dev/null 2>&1
