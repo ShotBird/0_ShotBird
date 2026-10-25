@@ -210,6 +210,8 @@ alt_account_pick() {
   IFS='|' read -r dir until efforts < <(tr -d '\r' < "$f" | head -1)
   [ -n "$dir" ] || return 0
   [ -n "$until" ] && [[ "$(date +%F)" > "$until" ]] && return 0
+  # 사용자가 "현 계정 필수"라고 한 티켓 = .orchestra/main-force에 번호 한 줄 → alt-force·alt-next·번갈아보다 먼저, 늘 본 계정
+  if [ -f "$STATE/main-force" ] && tr -d '\r' < "$STATE/main-force" | grep -qx "${1%r}"; then return 0; fi
   # 사용자가 "다른 계정으로 띄워"라고 한 티켓 = .orchestra/alt-force에 번호 한 줄 → effort·번갈아와 상관없이 보조 계정
   if [ -f "$STATE/alt-force" ] && tr -d '\r' < "$STATE/alt-force" | grep -qx "${1%r}"; then echo "$dir"; return 0; fi
   # 사용자가 번호 없이 "다른 계정으로 띄워"(다음 N개) = .orchestra/alt-next에 남은 개수 → 다음에 띄우는 세션부터 하나씩 깎으며 보조 계정
