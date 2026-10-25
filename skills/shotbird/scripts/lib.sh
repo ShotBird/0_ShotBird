@@ -217,6 +217,13 @@ alt_account_pick() {
   # 사용자가 번호 없이 "다른 계정으로 띄워"(다음 N개) = .orchestra/alt-next에 남은 개수 → 다음에 띄우는 세션부터 하나씩 깎으며 보조 계정
   local left; left=$(tr -dc '0-9' < "$STATE/alt-next" 2>/dev/null)
   if [ -n "$left" ] && [ "$left" -gt 0 ]; then echo $((left - 1)) > "$STATE/alt-next"; echo "$dir"; return 0; fi
+  # 사용자가 "<effort> 이외 effort는 전부 보조 계정"이라고 한 기간 = .orchestra/alt-except 첫 줄(빼 둘 effort, 공백 구분)
+  #   → 그 밖 effort(라벨 없는 티켓 "ticket" 포함)는 번갈아와 상관없이 늘 보조 계정. 빼 둔 effort는 아래 번갈아 규칙 그대로.
+  #   라벨 조회가 실패하면(eff 빈 값) 이 규칙은 건너뛴다 — gh가 잠깐 안 될 때 빼 둔 effort가 보조 계정으로 새지 않게
+  if [ -f "$STATE/alt-except" ]; then
+    eff=$(effort_of "$1" 2>/dev/null)
+    [ -n "$eff" ] && case " $(tr -d '\r' < "$STATE/alt-except" | head -1) " in *" $eff "*) ;; *) echo "$dir"; return 0 ;; esac
+  fi
   eff=$(effort_of "$1" 2>/dev/null)
   case " $efforts " in *" $eff "*) ;; *) return 0 ;; esac
   n=$(cat "$STATE/alt-account.count" 2>/dev/null || echo 0)
