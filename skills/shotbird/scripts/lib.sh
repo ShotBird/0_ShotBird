@@ -212,6 +212,9 @@ alt_account_pick() {
   [ -n "$until" ] && [[ "$(date +%F)" > "$until" ]] && return 0
   # 사용자가 "다른 계정으로 띄워"라고 한 티켓 = .orchestra/alt-force에 번호 한 줄 → effort·번갈아와 상관없이 보조 계정
   if [ -f "$STATE/alt-force" ] && tr -d '\r' < "$STATE/alt-force" | grep -qx "${1%r}"; then echo "$dir"; return 0; fi
+  # 사용자가 번호 없이 "다른 계정으로 띄워"(다음 N개) = .orchestra/alt-next에 남은 개수 → 다음에 띄우는 세션부터 하나씩 깎으며 보조 계정
+  local left; left=$(tr -dc '0-9' < "$STATE/alt-next" 2>/dev/null)
+  if [ -n "$left" ] && [ "$left" -gt 0 ]; then echo $((left - 1)) > "$STATE/alt-next"; echo "$dir"; return 0; fi
   eff=$(effort_of "$1" 2>/dev/null)
   case " $efforts " in *" $eff "*) ;; *) return 0 ;; esac
   n=$(cat "$STATE/alt-account.count" 2>/dev/null || echo 0)
