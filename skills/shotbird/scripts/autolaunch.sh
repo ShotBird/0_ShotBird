@@ -11,9 +11,28 @@ gh label create verify:browser --repo "$GH_REPO" --color FBCA04 --description "�
 MAX="${ORCH_MAX_SESSIONS:-6}"   # 동시에 떠 있는 병렬 세션(t<키>) 상한 — 세션마다 메모리 1 GB 안팎(2026-09-27 20개에 여유 6.8 GB)
 MIN_FREE_GB="${ORCH_MIN_FREE_GB:-0}"   # 여유 물리 메모리(GB)가 이 값보다 적으면 새 세션을 띄우지 않는다(0 = 끔) — 메모리가 먼저 바닥나는 PC용
 free_gb() { command -v powershell >/dev/null 2>&1 || return 0; powershell -NoProfile -Command "[math]::Floor((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1MB)" 2>/dev/null | tr -d '\r'; }
-live_sessions() { herdr agent list 2>/dev/null | python -c "
-import sys,json,re
-print(sum(1 for a in json.load(sys.stdin)['result']['agents'] if re.fullmatch(r't\d+r?',a.get('name') or '')))" | tr -d '\r'; }
+# 상한에 세는 세션 = t<키> 중 '일하는' 것 — 끝내고 병합만 기다리는 세션(merge-queue 마지막 줄의 커밋이 merge-state에 아직 없고 idle/done)은 빼서
+#   그동안 다음 티켓이 뜨게 한다(2026-10-26 — 상한 1에서 병합 대기 세션이 자리를 잡아 다음 티켓이 못 뜨는 틈).
+live_sessions() { herdr agent list 2>/dev/null | ORCH_STATE="$STATE" python -c "
+import sys,json,re,os
+st=os.environ.get('ORCH_STATE','')
+q={}; s=set()
+try:
+  for l in open(os.path.join(st,'merge-queue'),encoding='utf-8',errors='ignore'):
+    p=l.split()
+    if len(p)>=2: q[p[0]]=p[1]
+  for l in open(os.path.join(st,'merge-state'),encoding='utf-8',errors='ignore'):
+    p=l.split()
+    if len(p)>=2: s.add((p[0],p[1]))
+except Exception: pass
+pend={k for k,c in q.items() if (k,c) not in s}
+n=0
+for a in json.load(sys.stdin)['result']['agents']:
+  m=re.fullmatch(r't(\d+r?)',a.get('name') or '')
+  if not m: continue
+  if m.group(1) in pend and a.get('agent_status') in ('idle','done'): continue
+  n+=1
+print(n)" | tr -d '\r'; }
 while :; do
   for n in $(frontier "$MIN" | prioritize); do   # .orchestra/priority 번호가 먼저
     cur=$(live_sessions); [ -z "$cur" ] && cur=0
